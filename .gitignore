@@ -1,0 +1,155 @@
+# =============================================================================
+# .gitignore — Hardware (ESP32 Arduino + KiCad)
+# Project: SIH GLAH10 BrajCoders
+# =============================================================================
+
+
+# =============================================================================
+# ARDUINO IDE
+# =============================================================================
+
+# Arduino IDE build output (compiled binaries, object files, hex files)
+build/
+**/build/
+*.elf
+*.bin
+*.hex
+*.map
+
+# Arduino IDE 2.x cache and workspace metadata
+.arduino15/
+**/.arduino15/
+.vscode/
+**/.vscode/
+
+# Compiled object files generated during build
+*.o
+*.a
+
+# Arduino IDE 1.x temp files
+*.bak
+*.tmp
+
+
+# =============================================================================
+# KICAD PCB DESIGN
+# =============================================================================
+
+# KiCad auto-save and backup files
+*.kicad_pcb-bak
+*.kicad_sch-bak
+*.sch-bak
+*-bak.kicad_pcb
+*-bak.kicad_sch
+**/*-backups/
+*_autosave-*
+
+# KiCad project lock files (created when project is open)
+*.lck
+*.kicad_prl
+
+# KiCad symbol and footprint cache
+sym-lib-table
+fp-lib-table
+*.kicad_mod.bak
+
+# KiCad Gerber output (generated files — not source)
+Gerbers/
+gerbers/
+*.gbr
+*.gtl
+*.gbl
+*.gts
+*.gbs
+*.gto
+*.gbo
+*.gtp
+*.gbp
+*.gko
+*.gm1
+*.drl
+*.drl.rep
+*.drl.rpt
+*.pos
+*.cpl
+BOM/
+bom/
+
+# KiCad 3D render temporary files
+*.wrl
+
+# KiCad netlist exports (regenerated from schematic)
+*.net
+
+
+# =============================================================================
+# FRITZING
+# =============================================================================
+
+# Fritzing backup files
+*.fzb
+*.fzbz
+*.fzpz.bak
+
+
+# =============================================================================
+# EASYEDA
+# =============================================================================
+
+# EasyEDA exported JSON backups
+*.easyeda.bak
+
+
+# =============================================================================
+# OPERATING SYSTEM
+# =============================================================================
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Linux
+*~
+.nfs*
+
+
+# =============================================================================
+# EDITORS
+# =============================================================================
+
+# VS Code (if used alongside Arduino IDE 2)
+.vscode/
+*.code-workspace
+
+# JetBrains (CLion etc.)
+.idea/
+*.iml
+
+# Vim / Emacs swap files
+*.swp
+*.swo
+*~
+\#*\#
+
+
+# =============================================================================
+# LOGS AND TEMP FILES
+# =============================================================================
+
+*.log
+*.log.*
+*.temp
+*.cache
+
