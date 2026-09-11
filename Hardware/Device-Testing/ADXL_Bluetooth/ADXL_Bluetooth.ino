@@ -4,14 +4,12 @@
 
 #include "BluetoothSerial.h"
 
-
 // ============================================================
 // PIN CONFIGURATION
 // ============================================================
 
 #define SDA_PIN 21
 #define SCL_PIN 22
-
 
 // ============================================================
 // OBJECTS
@@ -20,7 +18,6 @@
 Adafruit_ADXL345_Unified adxl = Adafruit_ADXL345_Unified(12345);
 
 BluetoothSerial SerialBT;
-
 
 // ============================================================
 // SETUP ADXL345
@@ -47,7 +44,6 @@ bool setupADXL345()
     return true;
 }
 
-
 // ============================================================
 // READ ADXL345
 // ============================================================
@@ -67,7 +63,6 @@ bool readADXL345(float &x,
     return true;
 }
 
-
 // ============================================================
 // SETUP BLUETOOTH
 // ============================================================
@@ -79,7 +74,6 @@ void setupBluetooth()
     Serial.println("Bluetooth started");
     Serial.println("Device: ESP32_ADXL345");
 }
-
 
 // ============================================================
 // SEND DATA OVER BLUETOOTH
@@ -102,7 +96,6 @@ void sendBluetooth(float x,
     SerialBT.print(",");
     SerialBT.println(z, 3);
 }
-
 
 // ============================================================
 // SETUP
@@ -130,7 +123,6 @@ void setup()
     setupBluetooth();
 }
 
-
 // ============================================================
 // LOOP
 // ============================================================
@@ -154,7 +146,6 @@ void loop()
         Serial.print(z, 3);
 
         Serial.println(" m/s^2");
-
 
         // Bluetooth
         sendBluetooth(x, y, z);

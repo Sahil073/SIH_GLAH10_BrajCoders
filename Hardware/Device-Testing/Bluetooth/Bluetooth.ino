@@ -8,7 +8,7 @@ BluetoothSerial SerialBT;
 // --------------------------------------------------
 // Bluetooth device name
 // --------------------------------------------------
-const char* DEVICE_NAME = "ESP32_TEST";
+const char *DEVICE_NAME = "ESP32_TEST";
 
 // --------------------------------------------------
 // Setup

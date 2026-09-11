@@ -12,7 +12,6 @@
 
 BluetoothSerial SerialBT;
 
-
 // ============================================================
 // SETUP EXG
 // ============================================================
@@ -27,7 +26,6 @@ void setupEXG()
     Serial.println("EXG Pill initialized");
 }
 
-
 // ============================================================
 // READ EXG
 // ============================================================
@@ -36,7 +34,6 @@ int readEXG()
 {
     return analogRead(EXG_PIN);
 }
-
 
 // ============================================================
 // SEND EXG DATA OVER BLUETOOTH
@@ -54,7 +51,6 @@ void sendBluetooth(int exgValue)
     SerialBT.println(exgValue);
 }
 
-
 // ============================================================
 // SETUP BLUETOOTH
 // ============================================================
@@ -66,7 +62,6 @@ void setupBluetooth()
     Serial.println("Bluetooth started");
     Serial.println("Device name: ESP32_EXG");
 }
-
 
 // ============================================================
 // SETUP
@@ -87,7 +82,6 @@ void setup()
 
     setupBluetooth();
 }
-
 
 // ============================================================
 // LOOP

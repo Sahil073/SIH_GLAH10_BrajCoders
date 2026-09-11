@@ -5,8 +5,8 @@
 // Pin configuration
 // -------------------------
 
-#define DHT_PIN   4
-#define DHT_TYPE  DHT11
+#define DHT_PIN 4
+#define DHT_TYPE DHT11
 
 // -------------------------
 // Objects
@@ -15,7 +15,6 @@
 DHT dht(DHT_PIN, DHT_TYPE);
 
 BluetoothSerial SerialBT;
-
 
 // -------------------------
 // Setup DHT11
@@ -27,7 +26,6 @@ void setupDHT()
 
     Serial.println("DHT11 initialized");
 }
-
 
 // -------------------------
 // Read DHT11
@@ -49,7 +47,6 @@ bool readDHT(float &temperature, float &humidity)
     return true;
 }
 
-
 // -------------------------
 // Setup Bluetooth
 // -------------------------
@@ -61,7 +58,6 @@ void setupBluetooth()
     Serial.println("Bluetooth started");
     Serial.println("Device: ESP32_DHT11");
 }
-
 
 // -------------------------
 // Send data over Bluetooth
@@ -82,7 +78,6 @@ void sendBluetooth(float temperature,
     SerialBT.println(" %");
 }
 
-
 // -------------------------
 // Setup
 // -------------------------
@@ -99,7 +94,6 @@ void setup()
     setupDHT();
     setupBluetooth();
 }
-
 
 // -------------------------
 // Main loop

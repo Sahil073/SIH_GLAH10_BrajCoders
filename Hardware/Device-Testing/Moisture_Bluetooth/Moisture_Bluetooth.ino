@@ -13,7 +13,7 @@
 BluetoothSerial SerialBT;
 
 // Bluetooth device name
-const char* DEVICE_NAME = "ESP32_SOIL";
+const char *DEVICE_NAME = "ESP32_SOIL";
 
 // --------------------------------------------------
 // Soil moisture setup

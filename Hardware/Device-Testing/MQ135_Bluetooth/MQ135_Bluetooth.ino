@@ -16,7 +16,7 @@ BluetoothSerial SerialBT;
 // Bluetooth device name
 // --------------------------------------------------
 
-const char* DEVICE_NAME = "ESP32_MQ135";
+const char *DEVICE_NAME = "ESP32_MQ135";
 
 // --------------------------------------------------
 // MQ135 setup

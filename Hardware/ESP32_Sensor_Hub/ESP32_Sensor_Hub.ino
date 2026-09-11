@@ -20,48 +20,48 @@
 // 1. INCLUDES
 // ─────────────────────────────────────────────
 #include <Arduino.h>
-#include "BluetoothSerial.h"       // Bluetooth Classic SPP — ESP32 Arduino core
-#include <Wire.h>                  // I2C for ADXL345
-#include <Adafruit_Sensor.h>       // Adafruit unified sensor abstraction
-#include <Adafruit_ADXL345_U.h>    // ADXL345 driver
-#include <DHT.h>                   // DHT sensor library (Adafruit)
-#include <ArduinoJson.h>           // JSON serialisation
+#include "BluetoothSerial.h"    // Bluetooth Classic SPP — ESP32 Arduino core
+#include <Wire.h>               // I2C for ADXL345
+#include <Adafruit_Sensor.h>    // Adafruit unified sensor abstraction
+#include <Adafruit_ADXL345_U.h> // ADXL345 driver
+#include <DHT.h>                // DHT sensor library (Adafruit)
+#include <ArduinoJson.h>        // JSON serialisation
 
 // ─────────────────────────────────────────────
 // 2. PIN CONFIGURATION  (edit here only)
 // ─────────────────────────────────────────────
-#define PIN_EXG         34   // BioAmp EXG Pill — analog input (input-only GPIO)
-#define PIN_I2C_SDA     21   // ADXL345 SDA
-#define PIN_I2C_SCL     22   // ADXL345 SCL
-#define PIN_DHT         4    // DHT11 data
-#define PIN_MQ135       35   // MQ135 analog out (input-only GPIO)
-#define PIN_SOIL        32   // Soil moisture analog out
+#define PIN_EXG 34     // BioAmp EXG Pill — analog input (input-only GPIO)
+#define PIN_I2C_SDA 21 // ADXL345 SDA
+#define PIN_I2C_SCL 22 // ADXL345 SCL
+#define PIN_DHT 4      // DHT11 data
+#define PIN_MQ135 35   // MQ135 analog out (input-only GPIO)
+#define PIN_SOIL 32    // Soil moisture analog out
 
 // ─────────────────────────────────────────────
 // 3. CONSTANTS
 // ─────────────────────────────────────────────
 
 // EXG
-static const uint16_t EXG_SAMPLE_RATE_HZ  = 500;
-static const uint16_t EXG_BUFFER_SIZE     = 128;
-static const uint32_t EXG_INTERVAL_US     = 1000000UL / EXG_SAMPLE_RATE_HZ; // 2000 us
+static const uint16_t EXG_SAMPLE_RATE_HZ = 500;
+static const uint16_t EXG_BUFFER_SIZE = 128;
+static const uint32_t EXG_INTERVAL_US = 1000000UL / EXG_SAMPLE_RATE_HZ; // 2000 us
 
 // ADXL345
-static const uint32_t ADXL_ACQ_INTERVAL_MS  = 10;   // 100 Hz acquisition
-static const uint32_t ADXL_TX_INTERVAL_MS   = 40;   // 25 Hz Bluetooth transmission
+static const uint32_t ADXL_ACQ_INTERVAL_MS = 10; // 100 Hz acquisition
+static const uint32_t ADXL_TX_INTERVAL_MS = 40;  // 25 Hz Bluetooth transmission
 
 // DHT11
-static const uint32_t DHT_INTERVAL_MS        = 2000; // 0.5 Hz
+static const uint32_t DHT_INTERVAL_MS = 2000; // 0.5 Hz
 
 // MQ135
-static const uint32_t MQ135_ACQ_INTERVAL_MS  = 100;  // 10 Hz acquisition
-static const uint32_t MQ135_TX_INTERVAL_MS   = 1000; // 1 Hz Bluetooth transmission
-static const uint8_t  MQ135_AVG_SAMPLES      = 10;   // averaging window
+static const uint32_t MQ135_ACQ_INTERVAL_MS = 100; // 10 Hz acquisition
+static const uint32_t MQ135_TX_INTERVAL_MS = 1000; // 1 Hz Bluetooth transmission
+static const uint8_t MQ135_AVG_SAMPLES = 10;       // averaging window
 
 // Soil moisture
-static const uint32_t SOIL_ACQ_INTERVAL_MS   = 100;  // 10 Hz acquisition
-static const uint32_t SOIL_TX_INTERVAL_MS    = 2000; // 0.5 Hz Bluetooth transmission
-static const uint8_t  SOIL_AVG_SAMPLES       = 10;   // averaging window
+static const uint32_t SOIL_ACQ_INTERVAL_MS = 100; // 10 Hz acquisition
+static const uint32_t SOIL_TX_INTERVAL_MS = 2000; // 0.5 Hz Bluetooth transmission
+static const uint8_t SOIL_AVG_SAMPLES = 10;       // averaging window
 
 // DHT sensor type
 #define DHT_TYPE DHT11
@@ -74,10 +74,10 @@ static const uint8_t  SOIL_AVG_SAMPLES       = 10;   // averaging window
 // ─────────────────────────────────────────────
 enum class SensorId : uint8_t
 {
-    EXG           = 1,
-    ADXL345       = 2,
-    DHT11         = 3,
-    MQ135         = 4,
+    EXG = 1,
+    ADXL345 = 2,
+    DHT11 = 3,
+    MQ135 = 4,
     SOIL_MOISTURE = 5
 };
 
@@ -93,25 +93,25 @@ DHT dht(PIN_DHT, DHT_TYPE);
 bool adxlAvailable = false;
 
 // Per-sensor sequence counters (one per sensor for independent packet tracking)
-uint32_t exgSequence   = 0;
-uint32_t adxlSequence  = 0;
-uint32_t dhtSequence   = 0;
+uint32_t exgSequence = 0;
+uint32_t adxlSequence = 0;
+uint32_t dhtSequence = 0;
 uint32_t mq135Sequence = 0;
-uint32_t soilSequence  = 0;
+uint32_t soilSequence = 0;
 
 // ─────────────────────────────────────────────
 // 6. EXG BUFFER
 // ─────────────────────────────────────────────
 uint16_t exgBuffer[EXG_BUFFER_SIZE];
 uint16_t exgBufferIndex = 0;
-uint32_t exgLastMicros  = 0;
+uint32_t exgLastMicros = 0;
 
 // ─────────────────────────────────────────────
 //    ADXL345 STATE
 // ─────────────────────────────────────────────
 uint32_t adxlLastAcqMs = 0;
-uint32_t adxlLastTxMs  = 0;
-float    adxlX = 0.0f, adxlY = 0.0f, adxlZ = 0.0f;
+uint32_t adxlLastTxMs = 0;
+float adxlX = 0.0f, adxlY = 0.0f, adxlZ = 0.0f;
 
 // ─────────────────────────────────────────────
 //    DHT11 STATE
@@ -121,20 +121,20 @@ uint32_t dhtLastMs = 0;
 // ─────────────────────────────────────────────
 //    MQ135 STATE
 // ─────────────────────────────────────────────
-uint32_t mq135LastAcqMs  = 0;
-uint32_t mq135LastTxMs   = 0;
-uint32_t mq135AccumRaw   = 0;
-uint8_t  mq135SampleCnt  = 0;
-uint32_t mq135AvgRaw     = 0; // latest computed average
+uint32_t mq135LastAcqMs = 0;
+uint32_t mq135LastTxMs = 0;
+uint32_t mq135AccumRaw = 0;
+uint8_t mq135SampleCnt = 0;
+uint32_t mq135AvgRaw = 0; // latest computed average
 
 // ─────────────────────────────────────────────
 //    SOIL MOISTURE STATE
 // ─────────────────────────────────────────────
-uint32_t soilLastAcqMs  = 0;
-uint32_t soilLastTxMs   = 0;
-uint32_t soilAccumRaw   = 0;
-uint8_t  soilSampleCnt  = 0;
-uint32_t soilAvgRaw     = 0; // latest computed average
+uint32_t soilLastAcqMs = 0;
+uint32_t soilLastTxMs = 0;
+uint32_t soilAccumRaw = 0;
+uint8_t soilSampleCnt = 0;
+uint32_t soilAvgRaw = 0; // latest computed average
 
 // =============================================================================
 // 7. SENSOR INITIALIZATION FUNCTIONS
@@ -146,7 +146,7 @@ void setupEXG()
     // No special library — direct analogRead().
     // analogReadResolution(12) is set globally in setup().
     pinMode(PIN_EXG, INPUT);
-    exgLastMicros  = micros();
+    exgLastMicros = micros();
     exgBufferIndex = 0;
     Serial.println("[EXG]  Initialized — GPIO 34 | 500 Hz | 128-sample buffer");
 }
@@ -166,7 +166,7 @@ void setupADXL345()
     adxl.setRange(ADXL345_RANGE_2_G);
     adxlAvailable = true;
     adxlLastAcqMs = millis();
-    adxlLastTxMs  = millis();
+    adxlLastTxMs = millis();
     Serial.println("[ADXL345] Initialized — SDA=21, SCL=22 | 2G range | "
                    "100 Hz acq / 25 Hz BT");
 }
@@ -184,7 +184,7 @@ void setupMQ135()
     analogSetPinAttenuation(PIN_MQ135, ADC_11db); // 0–3.3 V input range
     pinMode(PIN_MQ135, INPUT);
     mq135LastAcqMs = millis();
-    mq135LastTxMs  = millis();
+    mq135LastTxMs = millis();
     Serial.println("[MQ135] Initialized — GPIO 35 | raw ADC | 10 Hz acq / 1 Hz BT");
 }
 
@@ -194,7 +194,7 @@ void setupSoilMoisture()
     analogSetPinAttenuation(PIN_SOIL, ADC_11db);
     pinMode(PIN_SOIL, INPUT);
     soilLastAcqMs = millis();
-    soilLastTxMs  = millis();
+    soilLastTxMs = millis();
     Serial.println("[SOIL]  Initialized — GPIO 32 | raw ADC | 10 Hz acq / 0.5 Hz BT");
 }
 
@@ -228,10 +228,12 @@ bool readEXG()
 // Returns true if a new sample was acquired this call.
 bool readADXL345()
 {
-    if (!adxlAvailable) return false;
+    if (!adxlAvailable)
+        return false;
 
     uint32_t now = millis();
-    if ((now - adxlLastAcqMs) < ADXL_ACQ_INTERVAL_MS) return false;
+    if ((now - adxlLastAcqMs) < ADXL_ACQ_INTERVAL_MS)
+        return false;
     adxlLastAcqMs = now;
 
     sensors_event_t event;
@@ -247,7 +249,8 @@ bool readADXL345()
 bool readDHT(float &temperature, float &humidity)
 {
     uint32_t now = millis();
-    if ((now - dhtLastMs) < DHT_INTERVAL_MS) return false;
+    if ((now - dhtLastMs) < DHT_INTERVAL_MS)
+        return false;
     dhtLastMs = now;
 
     float t = dht.readTemperature(); // degrees Celsius
@@ -260,7 +263,7 @@ bool readDHT(float &temperature, float &humidity)
     }
 
     temperature = t;
-    humidity    = h;
+    humidity = h;
     return true;
 }
 
@@ -269,7 +272,8 @@ bool readDHT(float &temperature, float &humidity)
 bool readMQ135()
 {
     uint32_t now = millis();
-    if ((now - mq135LastAcqMs) < MQ135_ACQ_INTERVAL_MS) return false;
+    if ((now - mq135LastAcqMs) < MQ135_ACQ_INTERVAL_MS)
+        return false;
     mq135LastAcqMs = now;
 
     mq135AccumRaw += (uint32_t)analogRead(PIN_MQ135);
@@ -277,8 +281,8 @@ bool readMQ135()
 
     if (mq135SampleCnt >= MQ135_AVG_SAMPLES)
     {
-        mq135AvgRaw    = mq135AccumRaw / (uint32_t)MQ135_AVG_SAMPLES;
-        mq135AccumRaw  = 0;
+        mq135AvgRaw = mq135AccumRaw / (uint32_t)MQ135_AVG_SAMPLES;
+        mq135AccumRaw = 0;
         mq135SampleCnt = 0;
         return true;
     }
@@ -290,7 +294,8 @@ bool readMQ135()
 bool readSoilMoisture()
 {
     uint32_t now = millis();
-    if ((now - soilLastAcqMs) < SOIL_ACQ_INTERVAL_MS) return false;
+    if ((now - soilLastAcqMs) < SOIL_ACQ_INTERVAL_MS)
+        return false;
     soilLastAcqMs = now;
 
     soilAccumRaw += (uint32_t)analogRead(PIN_SOIL);
@@ -298,8 +303,8 @@ bool readSoilMoisture()
 
     if (soilSampleCnt >= SOIL_AVG_SAMPLES)
     {
-        soilAvgRaw    = soilAccumRaw / (uint32_t)SOIL_AVG_SAMPLES;
-        soilAccumRaw  = 0;
+        soilAvgRaw = soilAccumRaw / (uint32_t)SOIL_AVG_SAMPLES;
+        soilAccumRaw = 0;
         soilSampleCnt = 0;
         return true;
     }
@@ -325,12 +330,12 @@ static void sendJson(JsonDocument &doc)
 void sendEXGPacket()
 {
     StaticJsonDocument<1600> doc;
-    doc["v"]      = 1;
+    doc["v"] = 1;
     doc["sensor"] = static_cast<uint8_t>(SensorId::EXG);
-    doc["seq"]    = exgSequence++;
+    doc["seq"] = exgSequence++;
     // ts = ESP32 uptime in milliseconds — NOT a Unix wall-clock timestamp.
-    doc["ts"]     = millis();
-    doc["rate"]   = EXG_SAMPLE_RATE_HZ;
+    doc["ts"] = millis();
+    doc["rate"] = EXG_SAMPLE_RATE_HZ;
 
     JsonArray samples = doc.createNestedArray("samples");
     for (uint16_t i = 0; i < EXG_BUFFER_SIZE; i++)
@@ -348,17 +353,19 @@ void sendEXGPacket()
 // sendADXLPacket() — transmits latest ADXL345 reading at 25 Hz.
 void sendADXLPacket()
 {
-    if (!adxlAvailable) return;
+    if (!adxlAvailable)
+        return;
 
     uint32_t now = millis();
-    if ((now - adxlLastTxMs) < ADXL_TX_INTERVAL_MS) return;
+    if ((now - adxlLastTxMs) < ADXL_TX_INTERVAL_MS)
+        return;
     adxlLastTxMs = now;
 
     StaticJsonDocument<256> doc;
-    doc["v"]      = 1;
+    doc["v"] = 1;
     doc["sensor"] = static_cast<uint8_t>(SensorId::ADXL345);
-    doc["seq"]    = adxlSequence++;
-    doc["ts"]     = now; // uptime ms
+    doc["seq"] = adxlSequence++;
+    doc["ts"] = now; // uptime ms
 
     JsonObject data = doc.createNestedObject("data");
     // Round to 2 decimal places to keep packets compact.
@@ -374,14 +381,14 @@ void sendADXLPacket()
 void sendDHTPacket(float temperature, float humidity)
 {
     StaticJsonDocument<256> doc;
-    doc["v"]      = 1;
+    doc["v"] = 1;
     doc["sensor"] = static_cast<uint8_t>(SensorId::DHT11);
-    doc["seq"]    = dhtSequence++;
-    doc["ts"]     = millis(); // uptime ms
+    doc["seq"] = dhtSequence++;
+    doc["ts"] = millis(); // uptime ms
 
     JsonObject data = doc.createNestedObject("data");
     data["temperature"] = roundf(temperature * 10.0f) / 10.0f; // 1 decimal
-    data["humidity"]    = roundf(humidity    * 10.0f) / 10.0f;
+    data["humidity"] = roundf(humidity * 10.0f) / 10.0f;
 
     if (SerialBT.hasClient())
         sendJson(doc);
@@ -391,14 +398,15 @@ void sendDHTPacket(float temperature, float humidity)
 void sendMQ135Packet()
 {
     uint32_t now = millis();
-    if ((now - mq135LastTxMs) < MQ135_TX_INTERVAL_MS) return;
+    if ((now - mq135LastTxMs) < MQ135_TX_INTERVAL_MS)
+        return;
     mq135LastTxMs = now;
 
     StaticJsonDocument<192> doc;
-    doc["v"]      = 1;
+    doc["v"] = 1;
     doc["sensor"] = static_cast<uint8_t>(SensorId::MQ135);
-    doc["seq"]    = mq135Sequence++;
-    doc["ts"]     = now;
+    doc["seq"] = mq135Sequence++;
+    doc["ts"] = now;
 
     JsonObject data = doc.createNestedObject("data");
     data["raw"] = mq135AvgRaw; // raw 12-bit ADC value — not ppm
@@ -411,14 +419,15 @@ void sendMQ135Packet()
 void sendSoilPacket()
 {
     uint32_t now = millis();
-    if ((now - soilLastTxMs) < SOIL_TX_INTERVAL_MS) return;
+    if ((now - soilLastTxMs) < SOIL_TX_INTERVAL_MS)
+        return;
     soilLastTxMs = now;
 
     StaticJsonDocument<192> doc;
-    doc["v"]      = 1;
+    doc["v"] = 1;
     doc["sensor"] = static_cast<uint8_t>(SensorId::SOIL_MOISTURE);
-    doc["seq"]    = soilSequence++;
-    doc["ts"]     = now;
+    doc["seq"] = soilSequence++;
+    doc["ts"] = now;
 
     JsonObject data = doc.createNestedObject("data");
     data["raw"] = soilAvgRaw; // raw 12-bit ADC value — no calibration applied
@@ -458,11 +467,11 @@ void setup()
 
     // ── Sensor initialization ──────────────────────────────────────────────
     // Each sensor logs its own status. Failures are reported but non-fatal.
-    setupADXL345();     // I2C + ADXL345 (sets adxlAvailable flag)
+    setupADXL345(); // I2C + ADXL345 (sets adxlAvailable flag)
     setupDHT();
     setupMQ135();
     setupSoilMoisture();
-    setupEXG();         // Last — starts the micros() reference for 500 Hz timing
+    setupEXG(); // Last — starts the micros() reference for 500 Hz timing
 
     Serial.println("[INIT] Initialization complete. Entering acquisition loop.");
     Serial.println("========================================");
@@ -483,12 +492,12 @@ void loop()
     }
 
     // ── ADXL345 (100 Hz acquisition / 25 Hz BT transmission) ──────────────
-    readADXL345();      // updates adxlX/Y/Z at ~100 Hz (millis gated)
-    sendADXLPacket();   // transmits latest values at ~25 Hz (millis gated)
+    readADXL345();    // updates adxlX/Y/Z at ~100 Hz (millis gated)
+    sendADXLPacket(); // transmits latest values at ~25 Hz (millis gated)
 
     // ── MQ135 (10 Hz acquisition / 1 Hz BT transmission) ──────────────────
-    readMQ135();        // accumulates raw ADC; computes avg every 10 samples
-    sendMQ135Packet();  // transmits averaged raw value at ~1 Hz
+    readMQ135();       // accumulates raw ADC; computes avg every 10 samples
+    sendMQ135Packet(); // transmits averaged raw value at ~1 Hz
 
     // ── Soil Moisture (10 Hz acquisition / 0.5 Hz BT transmission) ────────
     readSoilMoisture(); // accumulates raw ADC; computes avg every 10 samples
@@ -497,7 +506,7 @@ void loop()
     // ── DHT11 (0.5 Hz acquisition + transmission) ─────────────────────────
     {
         float temperature = 0.0f;
-        float humidity    = 0.0f;
+        float humidity = 0.0f;
         if (readDHT(temperature, humidity))
             sendDHTPacket(temperature, humidity);
         // On DHT read failure, readDHT() prints an error and returns false.
@@ -509,4 +518,3 @@ void loop()
 // =============================================================================
 // END OF FILE — ESP32_Sensor_Hub.ino
 // =============================================================================
-
