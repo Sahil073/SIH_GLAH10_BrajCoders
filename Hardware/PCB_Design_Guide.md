@@ -2,9 +2,11 @@
 
 > **Project:** SIH GLAH10 BrajCoders
 > **Tool:** KiCad 7 / KiCad 8
-> **Goal:** Partially working prototype PCB integrating all 5 sensors onto one board
-> **Strategy:** Bare ICs for ADXL345, DHT11, MQ135, Soil Moisture — full EXG instrumentation amplifier circuit on board
+> **Goal:** Prototype PCB integrating sensors onto one board — designed for field deployment, not bench use
+> **Strategy:** Bare ICs for ADXL345, DHT11; EXG instrumentation amplifier on board; MQ135 as raw element; no USB connector
 > **MCU:** ESP32-WROOM-32 module (not bare chip — avoids RF design complexity)
+> **Programming:** One-time via exposed UART pads using a removable jig — no USB connector on board
+> **Power:** LiPo battery (3.7V) → AMS1117-3.3 → 3.3V rail; MQ135 powered via small boost converter
 
 ---
 
@@ -15,12 +17,12 @@
 3. [Power Architecture](#3-power-architecture)
 4. [Schematic Guide — Section by Section](#4-schematic-guide--section-by-section)
    - [4.1 ESP32 Core Circuit](#41-esp32-core-circuit)
-   - [4.2 USB Power and Programming](#42-usb-power-and-programming)
-   - [4.3 BioAmp EXG — Instrumentation Amplifier Circuit](#43-bioamp-exg--instrumentation-amplifier-circuit)
-   - [4.4 ADXL345 Accelerometer](#44-adxl345-accelerometer)
-   - [4.5 DHT11 Temperature & Humidity](#45-dht11-temperature--humidity)
-   - [4.6 MQ135 Air Quality Sensor](#46-mq135-air-quality-sensor)
-   - [4.7 Soil Moisture — PCB Trace Electrodes](#47-soil-moisture--pcb-trace-electrodes)
+   - [4.2 Power Supply — LiPo + AMS1117](#42-power-supply--lipo--ams1117)
+   - [4.3 Programming Pads](#43-programming-pads)
+   - [4.4 BioAmp EXG — Instrumentation Amplifier Circuit](#44-bioamp-exg--instrumentation-amplifier-circuit)
+   - [4.5 ADXL345 Accelerometer](#45-adxl345-accelerometer)
+   - [4.6 DHT11 Temperature & Humidity](#46-dht11-temperature--humidity)
+   - [4.7 MQ135 Air Quality Sensor](#47-mq135-air-quality-sensor)
 5. [PCB Layout Guide](#5-pcb-layout-guide)
 6. [Layer Stackup](#6-layer-stackup)
 7. [EXG Circuit — Deep Dive](#7-exg-circuit--deep-dive)
@@ -34,22 +36,24 @@
 
 ### What goes on the PCB as a bare IC vs as a module
 
-| Sensor        | Approach                                               | Reason                                                                      |
-| ------------- | ------------------------------------------------------ | --------------------------------------------------------------------------- |
-| ESP32         | WROOM-32 **module**                                    | RF antenna design is complex and not worth it for a prototype               |
-| BioAmp EXG    | **Full circuit on PCB** (INA128 + filters)             | This is the flagship feature — showing it as a proper circuit is impressive |
-| ADXL345       | **Bare IC** (LGA-14)                                   | Standard digital IC, well-supported in KiCad                                |
-| DHT11         | **Bare IC** (SIP-4 through-hole)                       | Simplest possible integration                                               |
-| MQ135         | **Raw sensing element** (6-pin) + your support circuit | Sensor element is bare; module's op-amp circuit not needed                  |
-| Soil Moisture | **PCB copper traces** (interdigitated pattern)         | The PCB copper IS the sensor — elegant and compact                          |
+| Component     | Approach                                          | Reason                                                                      |
+| ------------- | ------------------------------------------------- | --------------------------------------------------------------------------- |
+| ESP32         | WROOM-32 **module**                               | RF antenna design is complex and not worth it for a prototype               |
+| BioAmp EXG    | **Full circuit on PCB** (INA128 + filters)        | This is the flagship feature — showing it as a proper circuit is impressive |
+| ADXL345       | **Bare IC** (LGA-14)                              | Standard digital IC, well-supported in KiCad                                |
+| DHT11         | **Bare IC** (SIP-4 through-hole)                  | Simplest possible integration                                               |
+| MQ135         | **Raw sensing element** (6-pin) + support circuit | Sensor element is bare; module's PCB not needed                             |
+| USB connector | **Not present**                                   | This is a field-deployed device — programmed once, then sealed              |
+| Programming   | **6 exposed UART pads** on board edge             | Factory jig connects temporarily; no port needed after deployment           |
+| Power         | **JST-PH 2-pin** (LiPo battery)                   | Portable, wearable form factor                                              |
 
 ### "Partially working" definition for this guide
 
 - All digital and analog circuits are correctly designed
-- Soil moisture sensing area is on the PCB itself
 - EXG front-end is a real instrumentation amplifier circuit
 - The board **could** be manufactured and would function
 - Some hand-soldering of fine-pitch parts (ADXL345 LGA) may need a reflow oven
+- MQ135 connected as raw element with a boost converter for its 5V heater
 
 ---
 
@@ -67,16 +71,27 @@
 | SW1  | Tactile switch                | 4-pin SMD            | 1   | EN / RESET button                                    |
 | SW2  | Tactile switch                | 4-pin SMD            | 1   | BOOT / GPIO0 button                                  |
 
-### USB Power and Programming
+### Power Supply
 
-| Ref | Component                    | Package        | Qty | Notes                                   |
-| --- | ---------------------------- | -------------- | --- | --------------------------------------- |
-| J1  | USB Type-C connector         | Horizontal SMD | 1   | For power + programming                 |
-| U2  | CP2102N USB-to-UART          | QFN-24         | 1   | Or CH340C in SOIC-16 if QFN is too fine |
-| U3  | AMS1117-3.3 LDO regulator    | SOT-223        | 1   | 5V USB → 3.3V for ESP32 and sensors     |
-| C3  | 100 nF ceramic               | 0402           | 2   | Input and output bypass on AMS1117      |
-| C4  | 10 µF electrolytic           | 0805           | 1   | Bulk cap on AMS1117 output              |
-| F1  | 500 mA polyfuse (resettable) | 1812           | 1   | USB protection                          |
+| Ref | Component                          | Package        | Qty | Notes                                  |
+| --- | ---------------------------------- | -------------- | --- | -------------------------------------- |
+| J1  | JST-PH 2-pin connector             | SMD horizontal | 1   | LiPo battery input (3.7V)              |
+| U2  | AMS1117-3.3 LDO regulator          | SOT-223        | 1   | 3.7V LiPo → 3.3V for ESP32 and sensors |
+| U3  | MT3608 boost converter (or module) | SOT-23-6       | 1   | 3.7V → 5V for MQ135 heater             |
+| C3  | 100 nF ceramic                     | 0402           | 2   | Input and output bypass on AMS1117     |
+| C4  | 10 µF electrolytic                 | 0805           | 1   | Bulk cap on AMS1117 output             |
+| C_B | 100 µF electrolytic                | 0805           | 1   | Bulk cap on MT3608 5V output           |
+
+### Programming Pads
+
+| Ref     | Component                       | Package         | Qty | Notes                     |
+| ------- | ------------------------------- | --------------- | --- | ------------------------- |
+| PP1–PP6 | Exposed copper programming pads | 1.5mm round pad | 6   | GND, 3V3, TX, RX, EN, IO0 |
+
+> These 6 pads sit in a row on one edge of the board.
+> During factory programming, a pogo-pin jig or a USB-to-UART dongle
+> clips onto these pads, loads the firmware, then is removed.
+> No USB connector is soldered to the board.
 
 ### BioAmp EXG — Instrumentation Amplifier
 
@@ -144,24 +159,25 @@
 ## 3. Power Architecture
 
 ```text
-USB Type-C (5V input)
+LiPo Battery (3.7V) via JST-PH connector
      │
-     ├──[F1 Polyfuse 500mA]──────────────────── 5V rail
-     │                                               │
-     │                                        [MQ135 heater]
-     │                                        [C14 100µF bulk]
+     ├──[MT3608 Boost Converter]─────────── 5V rail
+     │                                          │
+     │                                   [MQ135 heater]
+     │                                   [C_B 100µF bulk]
      │
-     └──[AMS1117-3.3]────────────────────────── 3.3V rail
-                                                    │
-                          ┌─────────────────────────┼──────────────────────────┐
-                          │                         │                          │
-                    [ESP32-WROOM]           [ADXL345 + DHT11]          [INA128 EXG]
-                    [CP2102N]               [Soil moisture]             [Bypass caps]
+     └──[AMS1117-3.3 LDO]─────────────── 3.3V rail
+                                               │
+                    ┌──────────────────────────┼──────────────────────┐
+                    │                          │                      │
+              [ESP32-WROOM]           [ADXL345 + DHT11]       [INA128 EXG]
+                                      [Bypass caps]            [Bypass caps]
 ```
 
-> **Critical:** The MQ135 heater draws ~150 mA from 5V and creates switching
-> noise. Keep its supply traces separate from the analog EXG section.
-> Use the polyfuse to protect the USB port.
+> **Why a boost converter for MQ135?**
+> The LiPo outputs 3.7V. The MQ135 heater needs 5V. The MT3608 is a compact
+> step-up converter (SOT-23-6) that converts 3.7V → 5V efficiently.
+> Keep its switching traces away from the analog EXG section to avoid noise.
 
 ---
 
@@ -178,49 +194,72 @@ ESP32-WROOM-32D module connections:
 
   EN   ──[10kΩ]── 3V3               (pull EN HIGH for normal operation)
   EN   ──[100nF]── GND              (debounce cap for EN pin)
-  EN   ─────────── SW1 ─── GND      (RESET button)
+  EN   ─────────── SW1 ─── GND      (RESET button — also accessible via programming pad)
 
   GPIO0 ──[10kΩ]── 3V3              (pull HIGH for normal boot)
-  GPIO0 ─────────── SW2 ─── GND    (BOOT button — pull LOW to enter flash mode)
+  GPIO0 ─────────── SW2 ─── GND    (BOOT button — also tied to IO0 programming pad)
 
   GPIO34 ─────────────────────────── EXG output (input-only ADC pin)
   GPIO21 ─────────────────────────── ADXL345 SDA
   GPIO22 ─────────────────────────── ADXL345 SCL
   GPIO4  ─────────────────────────── DHT11 DATA
   GPIO35 ─────────────────────────── MQ135 AO (after voltage divider)
-  GPIO32 ─────────────────────────── Soil moisture electrode
 
-  TXD0 (GPIO1)  ──────────────────── CP2102N RX
-  RXD0 (GPIO3)  ──────────────────── CP2102N TX
+  TXD0 (GPIO1)  ──────────────────── TX programming pad (PP3)
+  RXD0 (GPIO3)  ──────────────────── RX programming pad (PP4)
 ```
 
-### 4.2 USB Power and Programming
+### 4.2 Power Supply — LiPo + AMS1117
 
 ```text
-USB Type-C
-  VBUS ──[F1]────────────────────────── 5V rail
-  D+   ─────────────────────────────── CP2102N D+
-  D-   ─────────────────────────────── CP2102N D−
-  GND  ─────────────────────────────── GND
-
-CP2102N:
-  TXD ──────────────────────────────── ESP32 RXD0 (GPIO3)
-  RXD ──────────────────────────────── ESP32 TXD0 (GPIO1)
-  VDD ──[100nF]──────────────────────── 3.3V
-  GND ─────────────────────────────── GND
+LiPo Battery (JST-PH J1):
+  BAT+ ──────────────────────────── 3.7V input rail
+  BAT- ──────────────────────────── GND
 
 AMS1117-3.3:
-  IN  ──────── 5V rail
-  OUT ──────── 3.3V rail ──[10µF]──[100nF]── GND
-  GND ──────── GND
+  IN  ──── 3.7V input rail
+  OUT ──── 3.3V rail ──[10µF]──[100nF]── GND
+  GND ──── GND
+
+MT3608 Boost Converter:
+  VIN  ──── 3.7V input rail
+  VOUT ──── 5V rail ──[100µF]── GND
+  GND  ──── GND
+  (Set VOUT to 5V using the feedback resistor per MT3608 datasheet)
 ```
 
-> In KiCad: use the `Connector_USB:USB_C_Receptacle_GCT_USB4085` footprint
-> for the USB-C connector.
+> MT3608 switching frequency is ~1.2 MHz. Use short, thick traces on its
+> inductor and keep them far from EXG analog traces.
+
+### 4.3 Programming Pads
+
+```text
+Board edge — 6 pads in a row, 2.54mm pitch, labelled in silkscreen:
+
+  ┌──────┬──────┬──────┬──────┬──────┬──────┐
+  │ GND  │ 3V3  │  TX  │  RX  │  EN  │ IO0  │
+  │ PP1  │ PP2  │ PP3  │ PP4  │ PP5  │ PP6  │
+  └──────┴──────┴──────┴──────┴──────┴──────┘
+
+Connections:
+  PP1 (GND)  ──── GND plane
+  PP2 (3V3)  ──── 3.3V rail  (powers the external USB-to-UART dongle if needed)
+  PP3 (TX)   ──── ESP32 TXD0 / GPIO1
+  PP4 (RX)   ──── ESP32 RXD0 / GPIO3
+  PP5 (EN)   ──── ESP32 EN pin  (toggle LOW then HIGH to reset into bootloader)
+  PP6 (IO0)  ──── ESP32 GPIO0  (hold LOW during EN toggle to enter flash mode)
+
+Programming procedure:
+  1. Connect USB-to-UART adapter to pads GND, TX, RX
+  2. Hold IO0 pad LOW (short to GND)
+  3. Pulse EN pad LOW briefly → ESP32 enters bootloader
+  4. Flash firmware using esptool.py or Arduino IDE
+  5. Disconnect jig → device runs normally on next reset
+```
 
 ---
 
-### 4.3 BioAmp EXG — Instrumentation Amplifier Circuit
+### 4.4 BioAmp EXG — Instrumentation Amplifier Circuit
 
 This is the most important section. Read [Section 7](#7-exg-circuit--deep-dive) for full details.
 
@@ -262,7 +301,7 @@ INA128 output:
 
 ---
 
-### 4.4 ADXL345 Accelerometer
+### 4.5 ADXL345 Accelerometer
 
 ```text
 ADXL345 (I2C mode):
@@ -282,7 +321,7 @@ ADXL345 (I2C mode):
 
 ---
 
-### 4.5 DHT11 Temperature & Humidity
+### 4.6 DHT11 Temperature & Humidity
 
 ```text
 DHT11 (4-pin SIP):
@@ -294,11 +333,11 @@ DHT11 (4-pin SIP):
 
 ---
 
-### 4.6 MQ135 Air Quality Sensor
+### 4.7 MQ135 Air Quality Sensor
 
 ```text
 MQ135 element (6 pins: H-H-A-B-B-A pairs):
-  H pins (heater) ─────────────────────────── 5V and GND (150mA — use thick traces)
+  H pins (heater) ─────────────────────────── 5V rail (from MT3608) and GND
   A/B pins (sensor) — internal resistance varies with gas concentration
 
 Load resistor circuit:
@@ -306,13 +345,13 @@ Load resistor circuit:
   MQ135 B pin ──[R_L: trim pot 10kΩ]────────────── GND
               └─── AO_raw node
 
-Voltage divider (5V range → 3.3V safe for ESP32):
+Voltage divider (output may exceed 3.3V → divide down for ESP32 safety):
   AO_raw ──[R13: 10kΩ]──┬──[R14: 20kΩ]── GND
                          │
                     ESP32 GPIO35
-  (Divider ratio: 20k/(10k+20k) = 0.667 → 5V×0.667 = 3.33V max — safe)
+  (Divider ratio: 20k/(10k+20k) = 0.667 → max ~3.3V at GPIO35 — safe)
 
-Bulk decoupling for heater noise:
+Bulk decoupling for heater switching noise:
   5V ──[C14: 100µF]── GND   (place right next to MQ135)
 ```
 
@@ -322,68 +361,36 @@ Bulk decoupling for heater noise:
 
 ---
 
-### 4.7 Soil Moisture — PCB Trace Electrodes
-
-The soil moisture sensing area is **designed into the PCB copper layer**. No separate component is needed for the sensing element itself.
-
-```text
-Interdigitated "comb" pattern (design in PCB layout, not schematic):
-
-  ┌───┬───┬───┬───┬───┐
-  │   │   │   │   │   │
-  │   │   │   │   │   │   ← copper traces on PCB (bottom layer recommended)
-  │   │   │   │   │   │   ← trace width: 1mm, gap: 1mm, length: 30mm
-  └───┴───┴───┴───┴───┘
-   A   B   A   B   A       ← alternating connections
-
-  A traces ──────────────────── 3.3V (through R15: 100kΩ)
-  B traces ──────────────────── ESP32 GPIO32
-```
-
-In the schematic, model this as:
-
-```text
-  3.3V ──[R15: 100kΩ]──┬── GPIO32 (ESP32)
-                        │
-                 [soil electrodes = variable resistor to GND]
-                 (labelled as a symbol: "SOIL_ELECTRODE" or a generic resistor with a note)
-```
-
-When soil is dry → high resistance → GPIO32 reads near 3.3V (high ADC)
-When soil is wet → low resistance → GPIO32 reads near 0V (low ADC)
-
----
-
 ## 5. PCB Layout Guide
 
 ### Board dimensions
 
 - Suggested size: **80 mm × 60 mm** (fits most PCB services' cheapest tier)
-- Or if including soil moisture sensing area: **100 mm × 70 mm**
 
 ### Component placement zones
 
 ```text
-┌─────────────────────────────────────────────────┐
-│                                                 │
-│   [USB-C]  [CP2102N]  [AMS1117]    [ESP32]      │
-│                                                 │
-│─────────────────────────────────────────────────│
-│   DIGITAL SENSOR ZONE                           │
-│   [ADXL345]  [DHT11]  [Buttons]                 │
-│                                                 │
-│─────────────────────────────────────────────────│
-│   ANALOG SENSOR ZONE          │  5V ZONE        │
-│   [INA128 EXG circuit]        │  [MQ135]        │
-│   [Electrode connector]       │  [100µF cap]    │
-│                                                 │
-│─────────────────────────────────────────────────│
-│   SOIL MOISTURE ELECTRODE AREA (bottom copper)  │
-│   ┌──┬──┬──┬──┬──┬──┬──┬──┬──┐                 │
-│   │  │  │  │  │  │  │  │  │  │                 │
-│   └──┴──┴──┴──┴──┴──┴──┴──┴──┘                 │
-└─────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│  [PROG PADS] ←── board edge (silkscreen labelled)   │
+│─────────────────────────────────────────────────────│
+│  [JST-PH]  [AMS1117]  [MT3608]    [ESP32-WROOM]     │
+│                                                      │
+│─────────────────────────────────────────────────────│
+│   DIGITAL SENSOR ZONE                               │
+│   [ADXL345]  [DHT11]  [RESET btn]  [BOOT btn]       │
+│                                                      │
+│─────────────────────────────────────────────────────│
+│   ANALOG ZONE (AGND)       │   5V ZONE              │
+│   [INA128 EXG circuit]     │   [MQ135 element]      │
+│   [Electrode connector J2] │   [MT3608 bulk cap]    │
+└─────────────────────────────────────────────────────┘
 ```
+
+- **Top edge** — programming pads row (board edge, accessible with pogo jig)
+- **Top zone** — JST battery connector, LDO, boost converter, ESP32 module
+- **Middle zone** — digital sensors (ADXL345, DHT11) and buttons
+- **Bottom-left** — EXG instrumentation amplifier in its own analog ground island
+- **Bottom-right** — MQ135 element at board corner (needs airflow; 5V traces here)
 
 ### Ground plane rules
 
@@ -391,24 +398,26 @@ When soil is wet → low resistance → GPIO32 reads near 0V (low ADC)
 - **Split the analog and digital grounds** under the EXG circuit:
   - AGND (analog ground) — under INA128 and its components
   - DGND (digital ground) — everywhere else
-  - Join AGND and DGND at **exactly one point** — right at the AMS1117 output GND
-- The MQ135 heater current must return through DGND — never through AGND
+  - Join AGND and DGND at **exactly one point** — right at the AMS1117 LDO output GND
+- The MQ135 heater current and MT3608 switching current must return through DGND — never through AGND
 
 ### Trace widths
 
-| Signal                 | Width                                                |
-| ---------------------- | ---------------------------------------------------- |
-| 3.3V power             | 0.5 mm                                               |
-| 5V / MQ135 heater      | 1.0 mm                                               |
-| GND copper pour        | Solid pour                                           |
-| I2C (SDA/SCL)          | 0.25 mm                                              |
-| EXG analog signals     | 0.25 mm (short as possible)                          |
-| Electrode traces to J2 | 0.5 mm                                               |
-| Soil moisture traces   | 1.0 mm (sensing area), 0.25 mm (signal back to GPIO) |
+| Signal                 | Width                       |
+| ---------------------- | --------------------------- |
+| 3.3V power             | 0.5 mm                      |
+| 5V / MQ135 heater      | 1.0 mm                      |
+| MT3608 inductor traces | 1.0 mm (short as possible)  |
+| GND copper pour        | Solid pour                  |
+| I2C (SDA/SCL)          | 0.25 mm                     |
+| EXG analog signals     | 0.25 mm (short as possible) |
+| Electrode traces to J2 | 0.5 mm                      |
+| Programming pad traces | 0.5 mm                      |
 
 ### Critical spacing rules
 
 - Keep EXG analog traces **away from** all clock lines, ESP32, and MQ135
+- Keep MT3608 boost converter **away from** the EXG analog zone — its switching is noisy
 - Place INA128 bypass cap C9 within **3 mm** of the V+ pin
 - Place ADXL345 bypass caps within **2 mm** of the IC
 - Keep MQ135 at the **edge** of the board — it needs airflow to sense gases
@@ -420,13 +429,13 @@ When soil is wet → low resistance → GPIO32 reads near 0V (low ADC)
 
 For a standard 2-layer PCB (cheapest, available everywhere):
 
-| Layer                    | Used for                                             |
-| ------------------------ | ---------------------------------------------------- |
-| **Top copper (F.Cu)**    | All components, most signal traces, 3.3V/5V pour     |
-| **Bottom copper (B.Cu)** | Solid GND pour + soil moisture interdigitated traces |
-| **F.Silkscreen**         | Component labels, reference designators, board name  |
-| **F.Courtyard**          | Component boundaries (auto-generated in KiCad)       |
-| **Edge.Cuts**            | Board outline                                        |
+| Layer                    | Used for                                            |
+| ------------------------ | --------------------------------------------------- |
+| **Top copper (F.Cu)**    | All components, most signal traces, 3.3V/5V fills   |
+| **Bottom copper (B.Cu)** | Solid GND pour                                      |
+| **F.Silkscreen**         | Component labels, reference designators, board name |
+| **F.Courtyard**          | Component boundaries (auto-generated in KiCad)      |
+| **Edge.Cuts**            | Board outline                                       |
 
 > For a 2-layer board: top = signals + components, bottom = GND + soil traces.
 > This gives the EXG circuit a clean ground reference directly beneath it.
@@ -552,13 +561,13 @@ KiCad → New Project → "ESP32_Sensor_Hub_PCB"
 Draw schematic **section by section** in this order:
 
 1. Power symbols first (VCC_5V, VCC_3V3, GND, AGND)
-2. USB-C + CP2102N + AMS1117 (power input section)
+2. JST-PH connector + AMS1117 + MT3608 boost converter (power section)
 3. ESP32-WROOM-32 with all GPIO labels
-4. INA128 EXG circuit (most complex — do this before you get tired)
-5. ADXL345
-6. DHT11
-7. MQ135 + voltage divider
-8. Soil moisture (just a labelled net connection to GPIO32)
+4. Programming pads (PP1–PP6) connected to ESP32 TX, RX, EN, GPIO0
+5. INA128 EXG circuit (most complex — do this before you get tired)
+6. ADXL345
+7. DHT11
+8. MQ135 + voltage divider
 
 Use **global labels** in KiCad to connect nets across schematic sheets
 without drawing long wires:
@@ -567,24 +576,24 @@ without drawing long wires:
 - `SDA`, `SCL` — I2C bus
 - `DHT_DATA` — GPIO4
 - `MQ135_AO` — GPIO35
-- `SOIL_AO` — GPIO32
 
 ### Step 3 — Assign footprints
 
 Use the footprint assignment tool. Key footprints:
 
-| Symbol              | KiCad Footprint                                       |
-| ------------------- | ----------------------------------------------------- |
-| ESP32-WROOM-32D     | `RF_Module:ESP32-WROOM-32`                            |
-| INA128              | `Package_SO:SOIC-8_3.9x4.9mm_P1.27mm`                 |
-| ADXL345BCCZ         | `Sensor_Motion:Analog_ADXL345BCCZ_LGA-14`             |
-| DHT11               | `Sensor_Humidity:DHT11_SIP-4`                         |
-| AMS1117-3.3         | `Package_TO_SOT_SMD:SOT-223-3_TabPin2`                |
-| CP2102N             | `Package_DFN_QFN:QFN-24-1EP_4x4mm_P0.5mm_EP2.6x2.6mm` |
-| USB Type-C          | `Connector_USB:USB_C_Receptacle_GCT_USB4085`          |
-| 0402 resistors/caps | `Resistor_SMD:R_0402_1005Metric`                      |
-| BAV99               | `Package_TO_SOT_SMD:SOT-23`                           |
-| Tactile switch      | `Button_Switch_SMD:SW_SPST_CK_RS282G05A3`             |
+| Symbol                     | KiCad Footprint                                         |
+| -------------------------- | ------------------------------------------------------- |
+| ESP32-WROOM-32D            | `RF_Module:ESP32-WROOM-32`                              |
+| INA128                     | `Package_SO:SOIC-8_3.9x4.9mm_P1.27mm`                   |
+| ADXL345BCCZ                | `Sensor_Motion:Analog_ADXL345BCCZ_LGA-14`               |
+| DHT11                      | `Sensor_Humidity:DHT11_SIP-4`                           |
+| AMS1117-3.3                | `Package_TO_SOT_SMD:SOT-223-3_TabPin2`                  |
+| MT3608 boost               | `Package_TO_SOT_SMD:SOT-23-6`                           |
+| JST-PH 2-pin               | `Connector_JST:JST_PH_S2B-PH-K_1x02_P2.00mm_Horizontal` |
+| Programming pads (PP1–PP6) | `TestPoint:TestPoint_Pad_1.5x1.5mm` (×6, in a row)      |
+| 0402 resistors/caps        | `Resistor_SMD:R_0402_1005Metric`                        |
+| BAV99                      | `Package_TO_SOT_SMD:SOT-23`                             |
+| Tactile switch             | `Button_Switch_SMD:SW_SPST_CK_RS282G05A3`               |
 
 ### Step 4 — Run Electrical Rules Check (ERC)
 
@@ -619,15 +628,16 @@ PCB Editor → View → 3D Viewer → Render → Export as PNG
 
 ## 9. What "Partially Working" Means for This Board
 
-| Section                 | Status                | Notes                                                          |
-| ----------------------- | --------------------- | -------------------------------------------------------------- |
-| ESP32 + USB programming | ✅ Fully functional   | Standard, well-proven circuit                                  |
-| ADXL345 I2C             | ✅ Fully functional   | Standard digital IC                                            |
-| DHT11                   | ✅ Fully functional   | Simple 3-pin circuit                                           |
-| MQ135 (raw ADC)         | ✅ Functional         | Adjust R_L trim pot for your environment                       |
-| Soil moisture traces    | ✅ Functional         | PCB traces as electrodes — may need soil impedance calibration |
-| EXG (INA128 circuit)    | ✅ Circuit is correct | Signal quality depends on PCB layout and electrode quality     |
-| EXG (signal quality)    | ⚠️ May need tuning    | Gain and filter values may need adjustment per electrode type  |
+| Section                   | Status                | Notes                                                         |
+| ------------------------- | --------------------- | ------------------------------------------------------------- |
+| ESP32 + programming pads  | ✅ Fully functional   | Standard one-time UART flash procedure                        |
+| LiPo power + AMS1117      | ✅ Fully functional   | Well-proven LDO circuit                                       |
+| MT3608 5V boost for MQ135 | ✅ Functional         | Set feedback resistors for 5V output per datasheet            |
+| ADXL345 I2C               | ✅ Fully functional   | Standard digital IC                                           |
+| DHT11                     | ✅ Fully functional   | Simple 3-pin circuit                                          |
+| MQ135 (raw ADC)           | ✅ Functional         | Adjust R_L trim pot for your environment                      |
+| EXG (INA128 circuit)      | ✅ Circuit is correct | Signal quality depends on PCB layout and electrode quality    |
+| EXG (signal quality)      | ⚠️ May need tuning    | Gain and filter values may need adjustment per electrode type |
 
 **"Partially working"** means every circuit is real and correct —
 it is not a dummy board. With good assembly and layout it should work.
@@ -637,15 +647,17 @@ Signal quality on the EXG section may need one round of R_G / filter tuning.
 
 ## 10. Common Mistakes to Avoid
 
-| Mistake                                             | Consequence                                    | Fix                                               |
-| --------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------- |
-| MQ135 heater on 3.3V instead of 5V                  | Sensor won't heat → no gas detection           | Connect heater pins to 5V/GND                     |
-| Missing ESD protection on EXG inputs                | First static discharge destroys INA128         | Always add BAV99 on IN+ and IN−                   |
-| Single ground plane under EXG and digital           | Digital switching noise on EXG output          | Split AGND / DGND, join at one point              |
-| Skipping mid-supply REF on INA128                   | Output clipped on one half of signal           | R7, R8, C8 divider on REF pin is mandatory        |
-| I2C pull-ups on each device separately              | Parallel resistors = too low pull-up impedance | One pair of 4.7kΩ pull-ups for the whole I2C bus  |
-| ADXL345 CS left floating                            | Random mode selection, I2C may not work        | Tie CS to 3.3V for I2C mode                       |
-| MQ135 AO connected directly to ESP32 GPIO           | GPIO sees >3.3V → damage                       | Always use R13/R14 voltage divider                |
-| Soil moisture traces on top copper (component side) | Difficult to insert into soil                  | Use bottom copper for the interdigitated pattern  |
-| DHT11 near MQ135 heater                             | Temperature readings falsely high              | Place DHT11 on opposite side of board             |
-| Gain resistor R_G too far from INA128               | Stray capacitance alters gain at high freq     | Place R_G between pins 1 and 8 directly on the IC |
+| Mistake                                     | Consequence                                           | Fix                                                  |
+| ------------------------------------------- | ----------------------------------------------------- | ---------------------------------------------------- |
+| MQ135 heater on 3.3V instead of 5V          | Sensor won't heat → no gas detection                  | Connect heater pins to MT3608 5V output              |
+| MT3608 feedback resistors wrong             | 5V output becomes 4V or 7V                            | Calculate R_FB per MT3608 datasheet for exactly 5V   |
+| Missing ESD protection on EXG inputs        | First static discharge destroys INA128                | Always add BAV99 on IN+ and IN−                      |
+| Single ground plane under EXG and digital   | Digital switching noise on EXG output                 | Split AGND / DGND, join at one point                 |
+| MT3608 near EXG analog section              | Boost converter switching induces noise on EXG        | Keep MT3608 physically far from INA128               |
+| Skipping mid-supply REF on INA128           | Output clipped on one half of signal                  | R7, R8, C8 divider on REF pin is mandatory           |
+| I2C pull-ups on each device separately      | Parallel resistors = too low pull-up impedance        | One pair of 4.7kΩ pull-ups for the whole I2C bus     |
+| ADXL345 CS left floating                    | Random mode selection, I2C may not work               | Tie CS to 3.3V for I2C mode                          |
+| MQ135 AO connected directly to ESP32 GPIO   | GPIO sees >3.3V → damage                              | Always use R13/R14 voltage divider                   |
+| DHT11 near MQ135 heater                     | Temperature readings falsely high                     | Place DHT11 on opposite side of board                |
+| Gain resistor R_G too far from INA128       | Stray capacitance alters gain at high freq            | Place R_G between pins 1 and 8 directly on the IC    |
+| Programming pads not labelled in silkscreen | Cannot identify which pad is TX/RX during programming | Always label GND, 3V3, TX, RX, EN, IO0 in silkscreen |
