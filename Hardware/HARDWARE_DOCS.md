@@ -1,9 +1,9 @@
 # Hardware Documentation — ESP32 Sensor System
 
 > **Project:** SIH GLAH10 BrajCoders
-> **Target MCU:** Classic ESP32 (ESP32-WROOM / DevKit V1), Arduino framework
-> **Transport:** Bluetooth Classic SPP (`BluetoothSerial`)
-> **Full integration sketch:** [`Hardware/Device-Testing/ESP32_Sensor_Hub/ESP32_Sensor_Hub.ino`](Device-Testing/ESP32_Sensor_Hub/ESP32_Sensor_Hub.ino)
+> **Target MCU:** Classic ESP32 (ESP32-WROOM / DevKit V1), ESP32-S3, ESP32-C3, Arduino framework
+> **Transport:** Bluetooth Low Energy (BLE GATT) — Nordic UART Service (NUS)
+> **Full integration sketch:** [`Hardware/ESP32_Sensor_Hub/ESP32_Sensor_Hub.ino`](ESP32_Sensor_Hub/ESP32_Sensor_Hub.ino)
 
 ---
 
@@ -39,37 +39,43 @@ ESP32
  └── Soil Moisture     (GPIO 32)        — soil moisture (raw ADC)
           |
           ▼
-   Bluetooth Classic SPP
-   Device name: ESP32_SENSOR_HUB
+   Bluetooth Low Energy (BLE GATT)
+   Service: Nordic UART Service (NUS)
+   Device name: ESP32_SENSOR_HUB_BLE
           |
           ▼
-   Android / Windows client
+   Android / iOS / Web Bluetooth client
           |
           ▼
    JSON packets (newline-delimited)
 ```
 
-The ESP32 acquires sensor data continuously regardless of Bluetooth connection
-state. Bluetooth transmission is conditional — if no client is connected, data
-is silently discarded (bounded buffer, no unbounded queuing).
+The ESP32 acquires sensor data continuously regardless of BLE connection
+state. BLE transmission is conditional — if no client is connected, data
+is silently discarded (bounded buffer, no unbounded queuing). When a client
+connects and subscribes to the TX characteristic notifications, structured
+newline-delimited JSON packets are streamed. If a client disconnects, the ESP32
+automatically resumes BLE advertising.
 
 ---
 
 ## 2. MCU — ESP32
 
-| Property        | Value                                     |
-| --------------- | ----------------------------------------- |
-| Chip            | ESP32 (Xtensa LX6 dual-core)              |
-| Board           | ESP32-WROOM / DevKit V1                   |
-| Framework       | Arduino                                   |
-| Bluetooth       | Classic Bluetooth SPP (`BluetoothSerial`) |
-| ADC resolution  | 12-bit (0–4095 across 0–3.3 V)            |
-| I2C             | Remappable; SDA=GPIO 21, SCL=GPIO 22      |
-| USB Serial baud | 115200                                    |
+| Property        | Value                                            |
+| --------------- | ------------------------------------------------ |
+| Chip            | ESP32 (Xtensa LX6 dual-core), ESP32-S3, ESP32-C3 |
+| Board           | ESP32-WROOM / DevKit V1                          |
+| Framework       | Arduino                                          |
+| Bluetooth       | Bluetooth Low Energy (BLE 4.2 / 5.0 GATT Server) |
+| BLE Profile     | Nordic UART Service (NUS)                        |
+| ADC resolution  | 12-bit (0–4095 across 0–3.3 V)                   |
+| I2C             | Remappable; SDA=GPIO 21, SCL=GPIO 22             |
+| USB Serial baud | 115200                                           |
 
-> **Important:** Bluetooth Classic SPP is available **only** on the original
-> ESP32 chip. It is **not** available on ESP32-S2, S3, or C3. Do not replace
-> the chip variant without updating the Bluetooth architecture.
+> **Advantage of BLE:** Unlike legacy Bluetooth Classic (SPP) which was strictly
+> restricted to the original dual-core ESP32 chip, BLE is natively supported across
+> the modern ESP32 family (ESP32, ESP32-S3, ESP32-C3) and supports direct
+> connections from iOS, Android, macOS, Linux, and Web Bluetooth in modern browsers.
 
 ---
 
@@ -262,36 +268,38 @@ Individual test sketches may differ — see their headers.
 
 ## 5. Libraries Required
 
-| Library                               | Used by               | Source                        |
-| ------------------------------------- | --------------------- | ----------------------------- |
-| `BluetoothSerial`                     | All BT sketches + hub | ESP32 Arduino core (built-in) |
-| `Wire`                                | ADXL345               | ESP32 Arduino core (built-in) |
-| `Adafruit_Sensor`                     | ADXL345               | Arduino Library Manager       |
-| `Adafruit_ADXL345_U`                  | ADXL345               | Arduino Library Manager       |
-| `DHT.h` (Adafruit DHT sensor library) | DHT11                 | Arduino Library Manager       |
-| `ArduinoJson`                         | ESP32_Sensor_Hub only | Arduino Library Manager       |
+| Library                                         | Used by                | Source                        |
+| ----------------------------------------------- | ---------------------- | ----------------------------- |
+| `BLEDevice`, `BLEServer`, `BLEUtils`, `BLE2902` | All BLE sketches + hub | ESP32 Arduino core (built-in) |
+| `Wire`                                          | ADXL345                | ESP32 Arduino core (built-in) |
+| `Adafruit_Sensor`                               | ADXL345                | Arduino Library Manager       |
+| `Adafruit_ADXL345_U`                            | ADXL345                | Arduino Library Manager       |
+| `DHT.h` (Adafruit DHT sensor library)           | DHT11                  | Arduino Library Manager       |
+| `ArduinoJson`                                   | ESP32_Sensor_Hub only  | Arduino Library Manager       |
 
-> `BluetoothSerial` and `Wire` are bundled with the ESP32 Arduino core —
-> no separate installation is needed for them.
+> The BLE stack (`BLEDevice`, `BLEServer`, etc.) and `Wire` are bundled directly
+> with the ESP32 Arduino core — no external installation is needed for them.
 
 ---
 
 ## 6. Device Testing Sketches
 
 These sketches are individual sensor validation programs. Each tests one sensor
-(or one capability) in isolation. They use plain-text CSV data formats over
-Bluetooth — **not** the JSON protocol used by the full integration.
+(or one capability) in isolation. They transmit plain-text ASCII / CSV data streams over
+BLE TX characteristic notifications — **not** the JSON protocol used by the full integration.
+To test them, connect using a BLE terminal app (e.g., _Serial Bluetooth Terminal_ or _nRF Connect_)
+and select the **Bluetooth LE** scan tab.
 
-| Sketch                     | Location                | Sensor / Feature           | BT device name  | Data format                           | Rate    |
-| -------------------------- | ----------------------- | -------------------------- | --------------- | ------------------------------------- | ------- |
-| `LED.ino`                  | `LED/`                  | Onboard LED blink          | — (no BT)       | —                                     | 0.5 Hz  |
-| `Bluetooth.ino`            | `Bluetooth/`            | BT Classic connectivity    | `ESP32_TEST`    | `TEST DATA: <counter>`                | 1 Hz    |
-| `Bioamp_EXG.ino`           | `Bioamp_EXG/`           | EXG Pill (USB Serial only) | — (no BT)       | `<integer>` per line                  | ~100 Hz |
-| `Bioamp_EXG_Bluetooth.ino` | `Bioamp_EXG_Bluetooth/` | EXG Pill + BT              | `ESP32_EXG`     | `EXG,<integer>`                       | ~100 Hz |
-| `ADXL_Bluetooth.ino`       | `ADXL_Bluetooth/`       | ADXL345 + BT               | `ESP32_ADXL345` | `ADXL345,<x>,<y>,<z>`                 | ~10 Hz  |
-| `DHT_Bluetooth.ino`        | `DHT_Bluetooth/`        | DHT11 + BT                 | `ESP32_DHT11`   | `Temperature: <t> C, Humidity: <h> %` | 0.5 Hz  |
-| `MQ135_Bluetooth.ino`      | `MQ135_Bluetooth/`      | MQ135 + BT                 | `ESP32_MQ135`   | `MQ135,<integer>`                     | 2 Hz    |
-| `Moisture_Bluetooth.ino`   | `Moisture_Bluetooth/`   | Soil moisture + BT         | `ESP32_SOIL`    | `SOIL,<integer>`                      | 1 Hz    |
+| Sketch                     | Location                | Sensor / Feature           | BLE device name   | Data format                           | Rate    |
+| -------------------------- | ----------------------- | -------------------------- | ----------------- | ------------------------------------- | ------- |
+| `LED.ino`                  | `LED/`                  | Onboard LED blink          | — (no BLE)        | —                                     | 0.5 Hz  |
+| `Bluetooth.ino`            | `Bluetooth/`            | BLE NUS connectivity test  | `ESP32_TEST_BLE`  | `TEST DATA: <counter>`                | 1 Hz    |
+| `Bioamp_EXG.ino`           | `Bioamp_EXG/`           | EXG Pill (USB Serial only) | — (no BLE)        | `<integer>` per line                  | ~100 Hz |
+| `Bioamp_EXG_Bluetooth.ino` | `Bioamp_EXG_Bluetooth/` | EXG Pill + BLE             | `ESP32_EXG_BLE`   | `EXG,<integer>`                       | ~100 Hz |
+| `ADXL_Bluetooth.ino`       | `ADXL_Bluetooth/`       | ADXL345 + BLE              | `ESP32_ADXL_BLE`  | `ADXL345,<x>,<y>,<z>`                 | ~10 Hz  |
+| `DHT_Bluetooth.ino`        | `DHT_Bluetooth/`        | DHT11 + BLE                | `ESP32_DHT11_BLE` | `Temperature: <t> C, Humidity: <h> %` | 0.5 Hz  |
+| `MQ135_Bluetooth.ino`      | `MQ135_Bluetooth/`      | MQ135 + BLE                | `ESP32_MQ135_BLE` | `MQ135,<integer>`                     | 2 Hz    |
+| `Moisture_Bluetooth.ino`   | `Moisture_Bluetooth/`   | Soil moisture + BLE        | `ESP32_SOIL_BLE`  | `SOIL,<integer>`                      | 1 Hz    |
 
 > **Note on test sketch pin differences:**
 > `MQ135_Bluetooth.ino` uses GPIO **34** (not 35).
@@ -303,15 +311,18 @@ Bluetooth — **not** the JSON protocol used by the full integration.
 
 ## 7. Full Integration — ESP32_Sensor_Hub
 
-**File:** [`Device-Testing/ESP32_Sensor_Hub/ESP32_Sensor_Hub.ino`](Device-Testing/ESP32_Sensor_Hub/ESP32_Sensor_Hub.ino)
+**File:** [`Hardware/ESP32_Sensor_Hub/ESP32_Sensor_Hub.ino`](ESP32_Sensor_Hub/ESP32_Sensor_Hub.ino)
 
 ### Architecture
 
 - **Non-blocking multi-rate scheduler** using `millis()` and `micros()`.
 - **No `delay()` in `loop()`** — all rate control is timer-based.
-- EXG acquisition is the highest-priority task; checked on every loop iteration.
-- All sensors acquire data independently of Bluetooth connection state.
-- Bluetooth transmission is guarded by `if (SerialBT.hasClient())`.
+- EXG acquisition is the highest-priority task (500 Hz via `micros()`), checked on every loop iteration.
+- All sensors acquire data independently of BLE connection state.
+- BLE transmission is guarded by `if (deviceConnected)`.
+- **BLE GATT Server** implements the standard **Nordic UART Service (NUS)**.
+- **Auto-advertising restart**: When a client disconnects, `pServer->startAdvertising()` is triggered automatically to allow seamless reconnection.
+- **Large packet handling & MTU**: Calls `BLEDevice::setMTU(517)` during initialization and employs a safe 128-byte chunked transmission loop (`sendJson()`) with 2 ms yield to prevent notify buffer congestion for large EXG JSON payloads (~700–800 bytes).
 - JSON packets end with `\n` (newline) as the packet delimiter.
 
 ### Sensor ID Enum (protocol-fixed — do not change values)
@@ -370,14 +381,32 @@ All packets include `"ts"` — the ESP32 uptime in milliseconds (`millis()`).
 
 ## 9. Bluetooth Data Protocol
 
-| Property         | Value                                     |
-| ---------------- | ----------------------------------------- |
-| Protocol         | Bluetooth Classic SPP (RFCOMM)            |
-| Library          | `BluetoothSerial` (ESP32 Arduino core)    |
-| Device name      | `ESP32_SENSOR_HUB`                        |
-| Data format      | Compact JSON                              |
-| Packet delimiter | Newline character `\n`                    |
-| Protocol version | `"v": 1` (fixed; present in every packet) |
+| Property         | Value                                                           |
+| ---------------- | --------------------------------------------------------------- |
+| Protocol         | Bluetooth Low Energy (BLE 4.2 / 5.0) GATT Server                |
+| Profile          | Nordic UART Service (NUS)                                       |
+| Service UUID     | `6E400001-B5A3-F393-E0A9-E50E24DCCA9E`                          |
+| RX Char UUID     | `6E400002-B5A3-F393-E0A9-E50E24DCCA9E` (Write/WriteWithoutResp) |
+| TX Char UUID     | `6E400003-B5A3-F393-E0A9-E50E24DCCA9E` (Notify)                 |
+| CCCD Descriptor  | `00002902-0000-1000-8000-00805f9b34fb` (`BLE2902`)              |
+| Device name      | `ESP32_SENSOR_HUB_BLE`                                          |
+| MTU Requested    | 517 bytes (`BLEDevice::setMTU(517)`)                            |
+| Data format      | Compact JSON                                                    |
+| Packet delimiter | Newline character `\n`                                          |
+| Protocol version | `"v": 1` (fixed; present in every packet)                       |
+
+### Connecting from Client Applications
+
+1. **Android / iOS (Serial Bluetooth Terminal / nRF Connect):**
+   - Open app and navigate to **Bluetooth LE** / **BLE Scanner**.
+   - Scan and connect to `ESP32_SENSOR_HUB_BLE`.
+   - The app detects the Nordic UART Service automatically.
+   - Enable notifications on characteristic `6E400003-...` to receive the JSON stream.
+2. **Web Bluetooth API (Chrome / Edge):**
+   - Request device with filter `services: ['6e400001-b5a3-f393-e0a9-e50e24dcca9e']`.
+   - Connect to GATT server, get primary service, get TX characteristic `6e400003-...`, call `startNotifications()`, and attach listener to `characteristicvaluechanged`.
+3. **Flutter / React Native:**
+   - Use standard BLE plugins (`flutter_blue_plus`, `react-native-ble-plx`) targeting NUS UUIDs.
 
 **Packet structure (all sensors):**
 
@@ -525,7 +554,9 @@ Every packet contains these common fields plus sensor-specific fields:
 | **Test sketch pin difference** | `MQ135_Bluetooth.ino` and `Moisture_Bluetooth.ino` both use GPIO 34 (original test wiring). The full integration uses GPIO 35 (MQ135) and GPIO 32 (soil). |
 | **DHT11 pull-up**              | Bare DHT11 (not a module) needs a 10 kΩ pull-up between DATA and VCC.                                                                                     |
 | **`ts` is NOT Unix time**      | All `"ts"` values are `millis()` uptime. Record wall-clock time of first connection on the receiving side.                                                |
-| **Bluetooth Classic only**     | `BluetoothSerial` is available only on the original ESP32 chip — not on S2, S3, or C3.                                                                    |
+| **BLE Cross-Platform Support** | Unlike Classic Bluetooth (SPP), BLE works across iOS, Android, macOS, Linux, and Windows. It is also compatible with ESP32, ESP32-S3, and ESP32-C3 chips. |
+| **BLE Client Notification**    | Clients must enable notifications (CCCD 0x2902) on TX characteristic `6E400003-...` to receive the data stream.                                           |
+| **Large EXG JSON streaming**   | EXG arrays (~800 B) are transmitted in 128-byte BLE notification chunks with 2 ms yields to prevent notify buffer congestion on any MTU size.             |
 | **EXG signal quality**         | Electrode contact quality, EMI, and power supply noise directly affect EXG ADC readings.                                                                  |
 | **Soil calibration**           | Dry/wet ADC endpoints vary between sensor modules. Calibrate with your specific sensor in known conditions before deriving a percentage.                  |
 | **ADXL345 I2C address**        | Default address is 0x53 (SDO=GND). Pull SDO HIGH to use 0x1D if address conflicts with another device.                                                    |
