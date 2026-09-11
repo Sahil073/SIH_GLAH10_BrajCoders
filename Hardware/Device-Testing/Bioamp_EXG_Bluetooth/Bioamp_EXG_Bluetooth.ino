@@ -2,196 +2,210 @@
 // Bioamp_EXG_Bluetooth.ino
 //
 // PURPOSE:
-//   Combines the BioAmp EXG Pill raw ADC acquisition with Bluetooth Classic
-//   SPP transmission. Reads a single EXG sample every 10 ms (~100 Hz) and
-//   immediately streams it to a connected Bluetooth client as plain text.
+//   Combines the BioAmp EXG Pill raw ADC acquisition with Bluetooth Low Energy
+//   (BLE) transmission. Reads raw biopotential samples and streams them to a
+//   connected BLE client (e.g. mobile app or PC terminal) as plain text.
 //
 //   Use this sketch to:
-//     1. Verify end-to-end data flow from EXG Pill → ESP32 → Bluetooth → phone.
-//     2. Observe live EXG waveforms on an Android Bluetooth terminal app.
-//     3. Validate Bluetooth latency and throughput before integrating into
-//        the full multi-sensor hub (ESP32_Sensor_Hub.ino).
+//     1. Verify end-to-end data flow from EXG Pill → ESP32 → BLE → phone/PC.
+//     2. Observe live EXG waveforms on an Android/iOS BLE terminal app.
+//     3. Validate BLE throughput and latency before full hub integration.
 //
 // SENSOR:
 //   BioAmp EXG Pill (by Upside Down Labs)
-//   Instrumentation-amplifier front-end for biopotential signals.
-//   Output is a conditioned analog voltage proportional to the electrode
-//   differential. This sketch reads only the raw ADC value — no signal
-//   interpretation is performed.
+//   Instrumentation-amplifier front-end for biopotential signals (EMG/ECG/EOG).
+//   Output is an analog voltage proportional to the electrode differential.
+//   This sketch reads the raw 12-bit ADC value (0–4095).
 //
 // BOARD:
-//   Classic ESP32 (ESP32-WROOM / DevKit V1) — Arduino framework
-//   IMPORTANT: BluetoothSerial requires the original ESP32 chip.
-//   Not available on ESP32-S2, S3, or C3.
+//   Classic ESP32 (ESP32-WROOM / DevKit V1), ESP32-S3, ESP32-C3 — Arduino framework
 //
-// LIBRARY:
-//   BluetoothSerial — included in the ESP32 Arduino core.
+// LIBRARIES:
+//   BLEDevice, BLEServer, BLEUtils, BLE2902 — ESP32 Arduino core (built-in)
 //
-// BLUETOOTH DEVICE NAME:
-//   "ESP32_EXG"
+// BLE DEVICE NAME:
+//   "ESP32_EXG_BLE"
 //
 // WIRING:
 //   EXG Pill OUT  →  GPIO 34  (input-only ADC pin, ADC1_CH6)
 //   EXG Pill VCC  →  3.3 V
 //   EXG Pill GND  →  GND
 //
-// ADC:
-//   Resolution : 12-bit  →  values in range 0 – 4095
+// GATT PROFILE (Nordic UART Service - NUS):
+//   Service UUID : 6E400001-B5A3-F393-E0A9-E50E24DCCA9E
+//   TX Char UUID : 6E400003-B5A3-F393-E0A9-E50E24DCCA9E (Notify — ESP32 -> Client)
+//   RX Char UUID : 6E400002-B5A3-F393-E0A9-E50E24DCCA9E (Write  — Client -> ESP32)
 //
 // DATA FORMAT (plain text, comma-separated, one sample per line):
 //   EXG,<raw_adc_value>
 //
-//   Example output stream over Bluetooth:
+//   Example output stream over BLE:
 //     EXG,2048
 //     EXG,2051
 //     EXG,2046
-//     ...
-//
-//   NOTE: The integration sketch (ESP32_Sensor_Hub.ino) uses a different
-//   JSON format with a 128-sample buffer packet instead of per-sample text.
-//   This plain-text format is used here only for simple visual testing.
 //
 // SAMPLING RATE:
 //   ~100 Hz  (one sample per 10 ms delay)
-//   The delay()-based timing is acceptable for a basic Bluetooth test but
-//   is not precise. The full integration uses micros()-based 500 Hz scheduling.
+//   The production integration (ESP32_Sensor_Hub.ino) achieves 500 Hz
+//   using a non-blocking micros()-based scheduler.
 //
 // USB SERIAL:
 //   Baud rate : 115200
 //   Every sample value is also printed locally for monitoring.
 // =============================================================================
 
-#include "BluetoothSerial.h" // Bluetooth Classic SPP — ESP32 Arduino core
+#include <Arduino.h>
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
 
 // ============================================================
 // CONFIGURATION
 // ============================================================
-
-// GPIO connected to the BioAmp EXG Pill analog output.
-// GPIO 34 is an input-only pin on classic ESP32 — safe for ADC use.
 #define EXG_PIN 34
 
 // ============================================================
-// BLUETOOTH
+// BLE CONFIGURATION & NORDIC UART UUIDs
 // ============================================================
+#define DEVICE_NAME "ESP32_EXG_BLE"
+#define SERVICE_UUID           "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
+#define CHARACTERISTIC_UUID_RX "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
+#define CHARACTERISTIC_UUID_TX "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
 
-// Single BluetoothSerial instance.
-// Exposes an SPP channel — remote devices see this as a virtual serial port.
-BluetoothSerial SerialBT;
+// ============================================================
+// GLOBAL OBJECTS & STATE
+// ============================================================
+BLEServer *pServer = nullptr;
+BLECharacteristic *pTxCharacteristic = nullptr;
+bool deviceConnected = false;
+bool oldDeviceConnected = false;
+
+class MyServerCallbacks : public BLEServerCallbacks
+{
+    void onConnect(BLEServer *pServer) override
+    {
+        deviceConnected = true;
+        Serial.println("[BLE] Client connected");
+    }
+
+    void onDisconnect(BLEServer *pServer) override
+    {
+        deviceConnected = false;
+        Serial.println("[BLE] Client disconnected");
+    }
+};
 
 // ============================================================
 // SETUP EXG
 // ============================================================
-
 void setupEXG()
 {
-    // Declare GPIO 34 as a digital input.
-    // On input-only pins this is implicit, but stating it makes intent clear.
     pinMode(EXG_PIN, INPUT);
-
-    // Set ADC to 12-bit resolution: values 0–4095 across 0–3.3 V.
-    // ESP32 default is 12 bits, but setting it explicitly avoids any
-    // board-core version differences in the default.
     analogReadResolution(12);
-
-    Serial.println("EXG Pill initialized");
+    Serial.println("[EXG] Pill initialized on GPIO 34 (12-bit ADC)");
 }
 
 // ============================================================
 // READ EXG
 // ============================================================
-
-// Returns the raw 12-bit ADC value from the EXG Pill output.
-// Range: 0 – 4095.
-// The returned value represents the amplified biopotential voltage
-// mapped to the ADC input range. It is NOT in physical units (µV, mV).
 int readEXG()
 {
     return analogRead(EXG_PIN);
 }
 
 // ============================================================
-// SEND EXG DATA OVER BLUETOOTH
+// SETUP BLE
 // ============================================================
-
-// Transmits one EXG sample to the connected Bluetooth client.
-// Format: "EXG,<value>\n"
-// If no client is connected, silently returns without sending.
-void sendBluetooth(int exgValue)
+void setupBLE()
 {
-    // Guard: do not attempt to send if no Bluetooth device is connected.
-    // Sending to a disconnected client would silently fail.
-    if (!SerialBT.hasClient())
-    {
-        return;
-    }
+    BLEDevice::init(DEVICE_NAME);
+    BLEDevice::setMTU(517);
 
-    // Plain-text CSV format: label, value, newline
-    // Example: "EXG,2048\n"
-    SerialBT.print("EXG,");
-    SerialBT.println(exgValue);
+    pServer = BLEDevice::createServer();
+    pServer->setCallbacks(new MyServerCallbacks());
+
+    BLEService *pService = pServer->createService(SERVICE_UUID);
+
+    pTxCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_UUID_TX,
+        BLECharacteristic::PROPERTY_NOTIFY
+    );
+    pTxCharacteristic->addDescriptor(new BLE2902());
+
+    BLECharacteristic *pRxCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_UUID_RX,
+        BLECharacteristic::PROPERTY_WRITE
+    );
+
+    pService->start();
+
+    BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+    pAdvertising->addServiceUUID(SERVICE_UUID);
+    pAdvertising->setScanResponse(true);
+    pAdvertising->setMinPreferred(0x06);
+    pAdvertising->setMinPreferred(0x12);
+    BLEDevice::startAdvertising();
+
+    Serial.printf("[BLE] Advertising started as '%s'\n", DEVICE_NAME);
 }
 
 // ============================================================
-// SETUP BLUETOOTH
+// SEND EXG DATA OVER BLE
 // ============================================================
-
-void setupBluetooth()
+void sendBLE(int exgValue)
 {
-    // Advertise as "ESP32_EXG" — this name appears in the Bluetooth device list
-    // on phones and computers during scanning/pairing.
-    SerialBT.begin("ESP32_EXG");
+    if (!deviceConnected)
+        return;
 
-    Serial.println("Bluetooth started");
-    Serial.println("Device name: ESP32_EXG");
+    String payload = "EXG," + String(exgValue) + "\n";
+    pTxCharacteristic->setValue((uint8_t *)payload.c_str(), payload.length());
+    pTxCharacteristic->notify();
 }
 
 // ============================================================
 // SETUP
 // ============================================================
-
 void setup()
 {
-    // USB Serial for local debugging and monitoring
     Serial.begin(115200);
-
-    // Brief delay to allow the USB serial port to initialise on the host
     delay(1000);
 
     Serial.println();
     Serial.println("==============================");
-    Serial.println("ESP32 BioAmp EXG Test");
+    Serial.println("ESP32 BioAmp EXG BLE Test");
     Serial.println("==============================");
 
-    // Initialise EXG Pill ADC pin and resolution
     setupEXG();
-
-    // Start Bluetooth Classic SPP advertising
-    setupBluetooth();
+    setupBLE();
 }
 
 // ============================================================
 // LOOP
 // ============================================================
-
 void loop()
 {
-    // Acquire one raw ADC sample from the EXG Pill
     int exgValue = readEXG();
 
-    // Print the raw value to the USB Serial Monitor for local inspection.
-    // Open Tools → Serial Monitor at 115200 baud, or Serial Plotter to
-    // visualise the waveform.
-    Serial.print("EXG: ");
-    Serial.println(exgValue);
+    // Print to USB Serial Plotter/Monitor
+    Serial.printf("EXG: %d\n", exgValue);
 
-    // Transmit the same value over Bluetooth to the connected client.
-    // If no client is present, sendBluetooth() returns immediately.
-    sendBluetooth(exgValue);
+    // Stream over BLE
+    sendBLE(exgValue);
 
-    // 10 ms delay → ~100 Hz sample rate.
-    // NOTE: delay() blocks the CPU, making timing approximate.
-    // The production integration (ESP32_Sensor_Hub.ino) achieves 500 Hz
-    // using a non-blocking micros()-based scheduler instead.
+    // Auto-restart advertising on client disconnection
+    if (!deviceConnected && oldDeviceConnected)
+    {
+        delay(500);
+        pServer->startAdvertising();
+        Serial.println("[BLE] Restarted advertising.");
+        oldDeviceConnected = deviceConnected;
+    }
+    if (deviceConnected && !oldDeviceConnected)
+    {
+        oldDeviceConnected = deviceConnected;
+    }
+
+    // ~100 Hz loop rate (10 ms delay)
     delay(10);
 }

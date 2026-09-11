@@ -3,24 +3,28 @@
 //
 // Single-file integration for:
 //   - BioAmp EXG Pill  (Sensor ID 1) — GPIO 34, 500 Hz, 128-sample buffer
-//   - ADXL345           (Sensor ID 2) — I2C SDA=21/SCL=22, 100 Hz acq / 25 Hz BT
+//   - ADXL345           (Sensor ID 2) — I2C SDA=21/SCL=22, 100 Hz acq / 25 Hz BLE
 //   - DHT11             (Sensor ID 3) — GPIO 4, 0.5 Hz
-//   - MQ135             (Sensor ID 4) — GPIO 35, 10 Hz acq / 1 Hz BT
-//   - Soil Moisture     (Sensor ID 5) — GPIO 32, 10 Hz acq / 0.5 Hz BT
+//   - MQ135             (Sensor ID 4) — GPIO 35, 10 Hz acq / 1 Hz BLE
+//   - Soil Moisture     (Sensor ID 5) — GPIO 32, 10 Hz acq / 0.5 Hz BLE
 //
-// Transport : Bluetooth Classic SPP ("BluetoothSerial")
+// Transport : Bluetooth Low Energy (BLE) GATT Server — Nordic UART Service (NUS)
 // Format    : Compact JSON, newline-delimited
 // Timestamp : ESP32 uptime via millis() — NOT a Unix wall-clock timestamp
 // Protocol  : version 1 ("v":1)
 //
-// Board target : Classic ESP32 (ESP32-WROOM / DevKit V1), Arduino framework
+// Board target : Classic ESP32 (ESP32-WROOM / DevKit V1), ESP32-S3, ESP32-C3
+// Arduino framework
 // =============================================================================
 
 // ─────────────────────────────────────────────
 // 1. INCLUDES
 // ─────────────────────────────────────────────
 #include <Arduino.h>
-#include "BluetoothSerial.h"    // Bluetooth Classic SPP — ESP32 Arduino core
+#include <BLEDevice.h>          // BLE Core
+#include <BLEServer.h>          // BLE GATT Server
+#include <BLEUtils.h>           // BLE Utilities
+#include <BLE2902.h>            // BLE CCCD Descriptor for Notifications
 #include <Wire.h>               // I2C for ADXL345
 #include <Adafruit_Sensor.h>    // Adafruit unified sensor abstraction
 #include <Adafruit_ADXL345_U.h> // ADXL345 driver
@@ -38,7 +42,7 @@
 #define PIN_SOIL 32    // Soil moisture analog out
 
 // ─────────────────────────────────────────────
-// 3. CONSTANTS
+// 3. CONSTANTS & BLE UUIDs
 // ─────────────────────────────────────────────
 
 // EXG
@@ -48,26 +52,31 @@ static const uint32_t EXG_INTERVAL_US = 1000000UL / EXG_SAMPLE_RATE_HZ; // 2000 
 
 // ADXL345
 static const uint32_t ADXL_ACQ_INTERVAL_MS = 10; // 100 Hz acquisition
-static const uint32_t ADXL_TX_INTERVAL_MS = 40;  // 25 Hz Bluetooth transmission
+static const uint32_t ADXL_TX_INTERVAL_MS = 40;  // 25 Hz BLE transmission
 
 // DHT11
 static const uint32_t DHT_INTERVAL_MS = 2000; // 0.5 Hz
 
 // MQ135
 static const uint32_t MQ135_ACQ_INTERVAL_MS = 100; // 10 Hz acquisition
-static const uint32_t MQ135_TX_INTERVAL_MS = 1000; // 1 Hz Bluetooth transmission
+static const uint32_t MQ135_TX_INTERVAL_MS = 1000; // 1 Hz BLE transmission
 static const uint8_t MQ135_AVG_SAMPLES = 10;       // averaging window
 
 // Soil moisture
 static const uint32_t SOIL_ACQ_INTERVAL_MS = 100; // 10 Hz acquisition
-static const uint32_t SOIL_TX_INTERVAL_MS = 2000; // 0.5 Hz Bluetooth transmission
+static const uint32_t SOIL_TX_INTERVAL_MS = 2000; // 0.5 Hz BLE transmission
 static const uint8_t SOIL_AVG_SAMPLES = 10;       // averaging window
 
 // DHT sensor type
 #define DHT_TYPE DHT11
 
-// Bluetooth device name
-#define BT_DEVICE_NAME "ESP32_SENSOR_HUB"
+// BLE Device Name
+#define BLE_DEVICE_NAME "ESP32_SENSOR_HUB_BLE"
+
+// Nordic UART Service (NUS) UUIDs
+#define SERVICE_UUID "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
+#define CHARACTERISTIC_UUID_RX "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
+#define CHARACTERISTIC_UUID_TX "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
 
 // ─────────────────────────────────────────────
 // 4. SENSOR ID ENUM  (protocol-defined — do NOT change numeric values)
@@ -82,17 +91,21 @@ enum class SensorId : uint8_t
 };
 
 // ─────────────────────────────────────────────
-// 5. GLOBAL SENSOR OBJECTS & STATE
+// 5. GLOBAL SENSOR & BLE OBJECTS
 // ─────────────────────────────────────────────
 
-BluetoothSerial SerialBT;
+BLEServer *pServer = nullptr;
+BLECharacteristic *pTxCharacteristic = nullptr;
+bool deviceConnected = false;
+bool oldDeviceConnected = false;
+
 Adafruit_ADXL345_Unified adxl = Adafruit_ADXL345_Unified(12345);
 DHT dht(PIN_DHT, DHT_TYPE);
 
 // Sensor availability flags
 bool adxlAvailable = false;
 
-// Per-sensor sequence counters (one per sensor for independent packet tracking)
+// Per-sensor sequence counters (independent tracking)
 uint32_t exgSequence = 0;
 uint32_t adxlSequence = 0;
 uint32_t dhtSequence = 0;
@@ -100,51 +113,58 @@ uint32_t mq135Sequence = 0;
 uint32_t soilSequence = 0;
 
 // ─────────────────────────────────────────────
-// 6. EXG BUFFER
+// 6. EXG BUFFER & SENSOR STATE
 // ─────────────────────────────────────────────
 uint16_t exgBuffer[EXG_BUFFER_SIZE];
 uint16_t exgBufferIndex = 0;
 uint32_t exgLastMicros = 0;
 
-// ─────────────────────────────────────────────
-//    ADXL345 STATE
-// ─────────────────────────────────────────────
+// ADXL345 State
 uint32_t adxlLastAcqMs = 0;
 uint32_t adxlLastTxMs = 0;
 float adxlX = 0.0f, adxlY = 0.0f, adxlZ = 0.0f;
 
-// ─────────────────────────────────────────────
-//    DHT11 STATE
-// ─────────────────────────────────────────────
+// DHT11 State
 uint32_t dhtLastMs = 0;
 
-// ─────────────────────────────────────────────
-//    MQ135 STATE
-// ─────────────────────────────────────────────
+// MQ135 State
 uint32_t mq135LastAcqMs = 0;
 uint32_t mq135LastTxMs = 0;
 uint32_t mq135AccumRaw = 0;
 uint8_t mq135SampleCnt = 0;
-uint32_t mq135AvgRaw = 0; // latest computed average
+uint32_t mq135AvgRaw = 0;
 
-// ─────────────────────────────────────────────
-//    SOIL MOISTURE STATE
-// ─────────────────────────────────────────────
+// Soil Moisture State
 uint32_t soilLastAcqMs = 0;
 uint32_t soilLastTxMs = 0;
 uint32_t soilAccumRaw = 0;
 uint8_t soilSampleCnt = 0;
-uint32_t soilAvgRaw = 0; // latest computed average
+uint32_t soilAvgRaw = 0;
+
+// ─────────────────────────────────────────────
+// 7. BLE SERVER CALLBACKS
+// ─────────────────────────────────────────────
+class HubServerCallbacks : public BLEServerCallbacks
+{
+    void onConnect(BLEServer *pServer) override
+    {
+        deviceConnected = true;
+        Serial.println("[BLE] Central client connected!");
+    }
+
+    void onDisconnect(BLEServer *pServer) override
+    {
+        deviceConnected = false;
+        Serial.println("[BLE] Central client disconnected!");
+    }
+};
 
 // =============================================================================
-// 7. SENSOR INITIALIZATION FUNCTIONS
+// 8. SENSOR INITIALIZATION FUNCTIONS
 // =============================================================================
 
 void setupEXG()
 {
-    // BioAmp EXG Pill outputs a raw analog signal.
-    // No special library — direct analogRead().
-    // analogReadResolution(12) is set globally in setup().
     pinMode(PIN_EXG, INPUT);
     exgLastMicros = micros();
     exgBufferIndex = 0;
@@ -157,8 +177,7 @@ void setupADXL345()
 
     if (!adxl.begin())
     {
-        Serial.println("[ADXL345] ERROR — sensor not detected on I2C bus. "
-                       "Continuing without ADXL345.");
+        Serial.println("[ADXL345] ERROR — sensor not detected on I2C bus. Continuing without ADXL345.");
         adxlAvailable = false;
         return;
     }
@@ -167,8 +186,7 @@ void setupADXL345()
     adxlAvailable = true;
     adxlLastAcqMs = millis();
     adxlLastTxMs = millis();
-    Serial.println("[ADXL345] Initialized — SDA=21, SCL=22 | 2G range | "
-                   "100 Hz acq / 25 Hz BT");
+    Serial.println("[ADXL345] Initialized — SDA=21, SCL=22 | 2G range | 100 Hz acq / 25 Hz BLE");
 }
 
 void setupDHT()
@@ -180,26 +198,55 @@ void setupDHT()
 
 void setupMQ135()
 {
-    // No library — raw ADC only. Raw value reported; no ppm conversion.
     analogSetPinAttenuation(PIN_MQ135, ADC_11db); // 0–3.3 V input range
     pinMode(PIN_MQ135, INPUT);
     mq135LastAcqMs = millis();
     mq135LastTxMs = millis();
-    Serial.println("[MQ135] Initialized — GPIO 35 | raw ADC | 10 Hz acq / 1 Hz BT");
+    Serial.println("[MQ135] Initialized — GPIO 35 | raw ADC | 10 Hz acq / 1 Hz BLE");
 }
 
 void setupSoilMoisture()
 {
-    // No library — raw ADC only. Raw value reported; no calibration conversion.
     analogSetPinAttenuation(PIN_SOIL, ADC_11db);
     pinMode(PIN_SOIL, INPUT);
     soilLastAcqMs = millis();
     soilLastTxMs = millis();
-    Serial.println("[SOIL]  Initialized — GPIO 32 | raw ADC | 10 Hz acq / 0.5 Hz BT");
+    Serial.println("[SOIL]  Initialized — GPIO 32 | raw ADC | 10 Hz acq / 0.5 Hz BLE");
+}
+
+void setupBLE()
+{
+    BLEDevice::init(BLE_DEVICE_NAME);
+    BLEDevice::setMTU(517); // Request maximum MTU for high-throughput packets
+
+    pServer = BLEDevice::createServer();
+    pServer->setCallbacks(new HubServerCallbacks());
+
+    BLEService *pService = pServer->createService(SERVICE_UUID);
+
+    pTxCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_UUID_TX,
+        BLECharacteristic::PROPERTY_NOTIFY);
+    pTxCharacteristic->addDescriptor(new BLE2902());
+
+    BLECharacteristic *pRxCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_UUID_RX,
+        BLECharacteristic::PROPERTY_WRITE);
+
+    pService->start();
+
+    BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+    pAdvertising->addServiceUUID(SERVICE_UUID);
+    pAdvertising->setScanResponse(true);
+    pAdvertising->setMinPreferred(0x06);
+    pAdvertising->setMinPreferred(0x12);
+    BLEDevice::startAdvertising();
+
+    Serial.printf("[BLE]  GATT Server ready as '%s'\n", BLE_DEVICE_NAME);
 }
 
 // =============================================================================
-// 8. SENSOR ACQUISITION FUNCTIONS
+// 9. SENSOR ACQUISITION FUNCTIONS
 // =============================================================================
 
 // readEXG() — non-blocking micros()-based 500 Hz scheduler.
@@ -209,23 +256,22 @@ bool readEXG()
     uint32_t now = micros();
 
     if ((now - exgLastMicros) < EXG_INTERVAL_US)
-        return false; // interval not elapsed
+        return false;
 
-    // Advance reference by fixed interval to avoid drift accumulation.
+    // Advance reference by fixed interval to avoid drift accumulation
     exgLastMicros += EXG_INTERVAL_US;
 
     exgBuffer[exgBufferIndex++] = (uint16_t)analogRead(PIN_EXG);
 
     if (exgBufferIndex >= EXG_BUFFER_SIZE)
     {
-        exgBufferIndex = 0; // reset for next batch — buffer is ready
+        exgBufferIndex = 0;
         return true;
     }
     return false;
 }
 
 // readADXL345() — acquires at 100 Hz; stores latest reading in adxlX/Y/Z.
-// Returns true if a new sample was acquired this call.
 bool readADXL345()
 {
     if (!adxlAvailable)
@@ -245,7 +291,6 @@ bool readADXL345()
 }
 
 // readDHT() — reads at 0.5 Hz; validates with isnan().
-// Returns true when valid temperature/humidity are available.
 bool readDHT(float &temperature, float &humidity)
 {
     uint32_t now = millis();
@@ -253,8 +298,8 @@ bool readDHT(float &temperature, float &humidity)
         return false;
     dhtLastMs = now;
 
-    float t = dht.readTemperature(); // degrees Celsius
-    float h = dht.readHumidity();    // relative humidity %
+    float t = dht.readTemperature();
+    float h = dht.readHumidity();
 
     if (isnan(t) || isnan(h))
     {
@@ -268,7 +313,6 @@ bool readDHT(float &temperature, float &humidity)
 }
 
 // readMQ135() — acquires at 10 Hz; averages every 10 samples.
-// Returns true when a fresh average is ready in mq135AvgRaw.
 bool readMQ135()
 {
     uint32_t now = millis();
@@ -290,7 +334,6 @@ bool readMQ135()
 }
 
 // readSoilMoisture() — acquires at 10 Hz; averages every 10 samples.
-// Returns true when a fresh average is ready in soilAvgRaw.
 bool readSoilMoisture()
 {
     uint32_t now = millis();
@@ -312,42 +355,64 @@ bool readSoilMoisture()
 }
 
 // =============================================================================
-// 9. JSON / BLUETOOTH TRANSMISSION FUNCTIONS
+// 10. JSON / BLE TRANSMISSION FUNCTIONS
 // =============================================================================
 
-// Internal helper — serialises doc to SerialBT followed by newline delimiter.
+// Internal helper — serialises doc and streams out over BLE notifications.
+// Employs a safe 128-byte chunker to guarantee delivery across all BLE clients.
 static void sendJson(JsonDocument &doc)
 {
+    if (!deviceConnected)
+        return;
+
     String output;
-    output.reserve(256);
+    output.reserve(1600);
     serializeJson(doc, output);
     output += '\n';
-    SerialBT.print(output);
+
+    const uint8_t *data = (const uint8_t *)output.c_str();
+    size_t len = output.length();
+    size_t offset = 0;
+    const size_t maxChunk = 128; // Safe packet size for negotiated MTU
+
+    while (offset < len)
+    {
+        size_t chunk = len - offset;
+        if (chunk > maxChunk)
+            chunk = maxChunk;
+
+        pTxCharacteristic->setValue((uint8_t *)(data + offset), chunk);
+        pTxCharacteristic->notify();
+        offset += chunk;
+
+        if (offset < len)
+        {
+            // Brief yield between chunks to prevent BLE ring buffer congestion
+            delay(2);
+        }
+    }
 }
 
 // sendEXGPacket() — builds JSON for the full 128-sample EXG buffer and sends.
-// StaticJsonDocument<1600>: v+sensor+seq+ts+rate fields + 128 uint16 samples.
 void sendEXGPacket()
 {
     StaticJsonDocument<1600> doc;
     doc["v"] = 1;
     doc["sensor"] = static_cast<uint8_t>(SensorId::EXG);
     doc["seq"] = exgSequence++;
-    // ts = ESP32 uptime in milliseconds — NOT a Unix wall-clock timestamp.
-    doc["ts"] = millis();
+    doc["ts"] = millis(); // ESP32 uptime ms
     doc["rate"] = EXG_SAMPLE_RATE_HZ;
 
     JsonArray samples = doc.createNestedArray("samples");
     for (uint16_t i = 0; i < EXG_BUFFER_SIZE; i++)
         samples.add(exgBuffer[i]);
 
-    if (SerialBT.hasClient())
+    if (deviceConnected)
         sendJson(doc);
-    // If no BT client: buffer is dropped (bounded — no unbounded queuing).
 
-    Serial.printf("[EXG]  Packet seq=%lu | BT=%s\n",
+    Serial.printf("[EXG]  Packet seq=%lu | BLE=%s\n",
                   (unsigned long)(exgSequence - 1),
-                  SerialBT.hasClient() ? "sent" : "no client");
+                  deviceConnected ? "sent" : "no client");
 }
 
 // sendADXLPacket() — transmits latest ADXL345 reading at 25 Hz.
@@ -365,15 +430,14 @@ void sendADXLPacket()
     doc["v"] = 1;
     doc["sensor"] = static_cast<uint8_t>(SensorId::ADXL345);
     doc["seq"] = adxlSequence++;
-    doc["ts"] = now; // uptime ms
+    doc["ts"] = now;
 
     JsonObject data = doc.createNestedObject("data");
-    // Round to 2 decimal places to keep packets compact.
     data["x"] = roundf(adxlX * 100.0f) / 100.0f;
     data["y"] = roundf(adxlY * 100.0f) / 100.0f;
     data["z"] = roundf(adxlZ * 100.0f) / 100.0f;
 
-    if (SerialBT.hasClient())
+    if (deviceConnected)
         sendJson(doc);
 }
 
@@ -384,13 +448,13 @@ void sendDHTPacket(float temperature, float humidity)
     doc["v"] = 1;
     doc["sensor"] = static_cast<uint8_t>(SensorId::DHT11);
     doc["seq"] = dhtSequence++;
-    doc["ts"] = millis(); // uptime ms
+    doc["ts"] = millis();
 
     JsonObject data = doc.createNestedObject("data");
-    data["temperature"] = roundf(temperature * 10.0f) / 10.0f; // 1 decimal
+    data["temperature"] = roundf(temperature * 10.0f) / 10.0f;
     data["humidity"] = roundf(humidity * 10.0f) / 10.0f;
 
-    if (SerialBT.hasClient())
+    if (deviceConnected)
         sendJson(doc);
 }
 
@@ -409,9 +473,9 @@ void sendMQ135Packet()
     doc["ts"] = now;
 
     JsonObject data = doc.createNestedObject("data");
-    data["raw"] = mq135AvgRaw; // raw 12-bit ADC value — not ppm
+    data["raw"] = mq135AvgRaw;
 
-    if (SerialBT.hasClient())
+    if (deviceConnected)
         sendJson(doc);
 }
 
@@ -430,78 +494,64 @@ void sendSoilPacket()
     doc["ts"] = now;
 
     JsonObject data = doc.createNestedObject("data");
-    data["raw"] = soilAvgRaw; // raw 12-bit ADC value — no calibration applied
+    data["raw"] = soilAvgRaw;
 
-    if (SerialBT.hasClient())
+    if (deviceConnected)
         sendJson(doc);
 }
 
 // =============================================================================
-// 10. SETUP
+// 11. SETUP
 // =============================================================================
 void setup()
 {
-    // USB Serial debugging
     Serial.begin(115200);
-    delay(200); // brief settle — startup only, not repeated in loop
+    delay(200);
+
     Serial.println("========================================");
-    Serial.println("   ESP32 Sensor Hub — starting up");
+    Serial.println("   ESP32 Sensor Hub (BLE Edition)");
     Serial.println("========================================");
     Serial.println("[NOTE] 'ts' field = ESP32 uptime in ms (NOT Unix wall-clock time)");
-
-    // ── Bluetooth Classic SPP ──────────────────────────────────────────────
-    // Non-blocking: ESP32 will advertise and accept connections at any time.
-    // The loop does NOT wait for a client — acquisition runs regardless.
-    if (!SerialBT.begin(BT_DEVICE_NAME))
-    {
-        Serial.println("[BT] ERROR — BluetoothSerial.begin() failed!");
-        // Non-fatal: sensor acquisition continues; BT transmission is skipped.
-    }
-    else
-    {
-        Serial.printf("[BT] Bluetooth Classic SPP ready as '%s'\n", BT_DEVICE_NAME);
-    }
 
     // ── Global ADC resolution (classic ESP32 = 12-bit, range 0-4095) ──────
     analogReadResolution(12);
 
+    // ── BLE Setup ──────────────────────────────────────────────────────────
+    setupBLE();
+
     // ── Sensor initialization ──────────────────────────────────────────────
-    // Each sensor logs its own status. Failures are reported but non-fatal.
-    setupADXL345(); // I2C + ADXL345 (sets adxlAvailable flag)
+    setupADXL345(); // I2C + ADXL345
     setupDHT();
     setupMQ135();
     setupSoilMoisture();
-    setupEXG(); // Last — starts the micros() reference for 500 Hz timing
+    setupEXG(); // Starts the micros() reference for 500 Hz timing
 
     Serial.println("[INIT] Initialization complete. Entering acquisition loop.");
     Serial.println("========================================");
 }
 
 // =============================================================================
-// 11. LOOP — non-blocking multi-rate scheduler
+// 12. LOOP — non-blocking multi-rate scheduler
 // =============================================================================
 void loop()
 {
     // ── EXG (highest priority — micros()-based 500 Hz) ────────────────────
-    // readEXG() is checked on every loop iteration to maintain tight timing.
-    // JSON serialisation occurs only after 128 samples are collected (~256 ms).
     if (readEXG())
     {
-        sendEXGPacket(); // transmits (or drops) the full buffer
-        // exgBufferIndex reset inside readEXG(); acquisition resumes immediately
+        sendEXGPacket(); // transmits full 128-sample buffer (~3.9 Hz)
     }
 
-    // ── ADXL345 (100 Hz acquisition / 25 Hz BT transmission) ──────────────
-    readADXL345();    // updates adxlX/Y/Z at ~100 Hz (millis gated)
-    sendADXLPacket(); // transmits latest values at ~25 Hz (millis gated)
+    // ── ADXL345 (100 Hz acquisition / 25 Hz BLE transmission) ─────────────
+    readADXL345();    // ~100 Hz
+    sendADXLPacket(); // ~25 Hz
 
-    // ── MQ135 (10 Hz acquisition / 1 Hz BT transmission) ──────────────────
-    readMQ135();       // accumulates raw ADC; computes avg every 10 samples
-    sendMQ135Packet(); // transmits averaged raw value at ~1 Hz
+    // ── MQ135 (10 Hz acquisition / 1 Hz BLE transmission) ─────────────────
+    readMQ135();       // 10 Hz
+    sendMQ135Packet(); // 1 Hz
 
-    // ── Soil Moisture (10 Hz acquisition / 0.5 Hz BT transmission) ────────
-    readSoilMoisture(); // accumulates raw ADC; computes avg every 10 samples
-    sendSoilPacket();   // transmits averaged raw value every ~2 s
+    // ── Soil Moisture (10 Hz acquisition / 0.5 Hz BLE transmission) ───────
+    readSoilMoisture(); // 10 Hz
+    sendSoilPacket();   // 0.5 Hz
 
     // ── DHT11 (0.5 Hz acquisition + transmission) ─────────────────────────
     {
@@ -509,11 +559,22 @@ void loop()
         float humidity = 0.0f;
         if (readDHT(temperature, humidity))
             sendDHTPacket(temperature, humidity);
-        // On DHT read failure, readDHT() prints an error and returns false.
-        // No invalid data is transmitted.
     }
 
-    // No delay() in this loop — all rate control is millis()/micros()-based.
+    // ── BLE Auto-reconnection Handler ─────────────────────────────────────
+    if (!deviceConnected && oldDeviceConnected)
+    {
+        delay(500); // Allow BLE stack to reset
+        pServer->startAdvertising();
+        Serial.println("[BLE] Client disconnected. Restarted advertising.");
+        oldDeviceConnected = deviceConnected;
+    }
+    if (deviceConnected && !oldDeviceConnected)
+    {
+        oldDeviceConnected = deviceConnected;
+    }
+
+    // Zero delay() in this loop — all rate control is millis()/micros()-based.
 }
 // =============================================================================
 // END OF FILE — ESP32_Sensor_Hub.ino

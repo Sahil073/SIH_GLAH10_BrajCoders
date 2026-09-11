@@ -2,29 +2,36 @@
 // Bluetooth.ino
 //
 // PURPOSE:
-//   Bare-minimum Bluetooth Classic SPP (Serial Port Profile) connectivity test.
+//   Bare-minimum Bluetooth Low Energy (BLE) GATT server connectivity test.
+//   Implements the industry-standard Nordic UART Service (NUS) over BLE.
 //   Verifies that the ESP32 can:
-//     1. Advertise itself as a Bluetooth Classic device.
-//     2. Accept a connection from an Android or Windows client.
-//     3. Transmit a plain-text counter value over the SPP channel.
+//     1. Advertise itself as a BLE peripheral device ("ESP32_TEST_BLE").
+//     2. Accept a BLE connection from an Android, iOS, or Windows client.
+//     3. Transmit a plain-text counter value via BLE characteristic notifications.
+//     4. Automatically resume advertising when a client disconnects.
 //
-//   Run this sketch first to confirm Bluetooth hardware is functional before
-//   testing any sensor-specific Bluetooth sketches.
+//   Run this sketch first to confirm BLE stack functionality before
+//   testing any sensor-specific BLE sketches.
 //
 // BOARD:
-//   Classic ESP32 (ESP32-WROOM / DevKit V1) — Arduino framework
-//   IMPORTANT: Bluetooth Classic (SPP) is NOT available on ESP32-S2/S3/C3.
-//   Use only on the original ESP32 chip.
+//   Classic ESP32 (ESP32-WROOM / DevKit V1), ESP32-S3, ESP32-C3 — Arduino framework
+//   Unlike Bluetooth Classic (which was restricted to original ESP32),
+//   BLE is supported across the entire modern ESP32 family!
 //
-// LIBRARY:
-//   BluetoothSerial — included in the ESP32 Arduino core.
-//   No additional installation required.
+// LIBRARIES:
+//   BLEDevice, BLEServer, BLEUtils, BLE2902 — built into the ESP32 Arduino core.
+//   No external library installation required.
 //
-// BLUETOOTH DEVICE NAME:
-//   "ESP32_TEST"
-//   Visible in your phone's Bluetooth device list.
-//   Pair with this device, then connect via any serial Bluetooth app
-//   (e.g., Serial Bluetooth Terminal on Android).
+// GATT PROFILE (Nordic UART Service - NUS):
+//   Service UUID : 6E400001-B5A3-F393-E0A9-E50E24DCCA9E
+//   TX Char UUID : 6E400003-B5A3-F393-E0A9-E50E24DCCA9E (Notify — ESP32 -> Client)
+//   RX Char UUID : 6E400002-B5A3-F393-E0A9-E50E24DCCA9E (Write  — Client -> ESP32)
+//
+// HOW TO CONNECT:
+//   1. Install "Serial Bluetooth Terminal" (Android/iOS) or "nRF Connect".
+//   2. In Serial Bluetooth Terminal: Menu -> Devices -> Bluetooth LE tab.
+//   3. Scan and select "ESP32_TEST_BLE".
+//   4. Connect. The app automatically recognizes the Nordic UART Service.
 //
 // DATA FORMAT (plain text, one value per line):
 //   TEST DATA: <counter>
@@ -39,49 +46,103 @@
 //
 // USB SERIAL:
 //   Baud rate : 115200
-//   Mirrors every transmitted Bluetooth value so you can monitor locally.
-//
-// NOTE:
-//   This sketch DOES NOT transmit any real sensor data.
-//   It is a connectivity verification tool only.
+//   Mirrors every transmitted BLE value so you can monitor locally.
 // =============================================================================
 
-#include "BluetoothSerial.h" // Bluetooth Classic SPP — ESP32 Arduino core
+#include <Arduino.h>
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
 
 // --------------------------------------------------
-// Bluetooth object
-// One instance per sketch — only one SPP server is
-// supported at a time on the classic ESP32.
+// BLE Device & Nordic UART Service UUIDs
 // --------------------------------------------------
-BluetoothSerial SerialBT;
+#define DEVICE_NAME "ESP32_TEST_BLE"
+#define SERVICE_UUID           "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
+#define CHARACTERISTIC_UUID_RX "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
+#define CHARACTERISTIC_UUID_TX "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
 
 // --------------------------------------------------
-// Bluetooth device name
-// This is the name shown to the remote device
-// during pairing and connection.
+// Global BLE pointers & state flags
 // --------------------------------------------------
-const char *DEVICE_NAME = "ESP32_TEST";
+BLEServer *pServer = nullptr;
+BLECharacteristic *pTxCharacteristic = nullptr;
+bool deviceConnected = false;
+bool oldDeviceConnected = false;
+
+// --------------------------------------------------
+// Server callbacks: track connection and disconnection
+// --------------------------------------------------
+class MyServerCallbacks : public BLEServerCallbacks
+{
+    void onConnect(BLEServer *pServer) override
+    {
+        deviceConnected = true;
+        Serial.println("[BLE] Client connected");
+    }
+
+    void onDisconnect(BLEServer *pServer) override
+    {
+        deviceConnected = false;
+        Serial.println("[BLE] Client disconnected");
+    }
+};
 
 // --------------------------------------------------
 // Setup
 // --------------------------------------------------
 void setup()
 {
-    // Start USB Serial communication for local debugging
     Serial.begin(115200);
-
-    // Start Bluetooth Classic SPP and begin advertising.
-    // After this call the ESP32 is discoverable and connectable.
-    // No blocking wait — the loop runs immediately.
-    SerialBT.begin(DEVICE_NAME);
+    delay(500);
 
     Serial.println();
     Serial.println("================================");
-    Serial.println("ESP32 Bluetooth Test");
+    Serial.println("ESP32 BLE Connectivity Test");
     Serial.println("================================");
     Serial.print("Device name: ");
     Serial.println(DEVICE_NAME);
-    Serial.println("Waiting for Bluetooth connection...");
+
+    // Initialize BLE device
+    BLEDevice::init(DEVICE_NAME);
+
+    // Set maximum MTU for high throughput
+    BLEDevice::setMTU(517);
+
+    // Create the BLE Server
+    pServer = BLEDevice::createServer();
+    pServer->setCallbacks(new MyServerCallbacks());
+
+    // Create the Nordic UART Service
+    BLEService *pService = pServer->createService(SERVICE_UUID);
+
+    // Create the TX characteristic (Notify from ESP32 to remote client)
+    pTxCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_UUID_TX,
+        BLECharacteristic::PROPERTY_NOTIFY
+    );
+    // Add BLE2902 descriptor for notifications
+    pTxCharacteristic->addDescriptor(new BLE2902());
+
+    // Create the RX characteristic (Write from remote client to ESP32)
+    BLECharacteristic *pRxCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_UUID_RX,
+        BLECharacteristic::PROPERTY_WRITE
+    );
+
+    // Start the service
+    pService->start();
+
+    // Start advertising so mobile apps can discover the device
+    BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+    pAdvertising->addServiceUUID(SERVICE_UUID);
+    pAdvertising->setScanResponse(true);
+    pAdvertising->setMinPreferred(0x06); // functions that help with iPhone connections
+    pAdvertising->setMinPreferred(0x12);
+    BLEDevice::startAdvertising();
+
+    Serial.println("[BLE] Advertising started. Waiting for connection...");
 }
 
 // --------------------------------------------------
@@ -89,35 +150,43 @@ void setup()
 // --------------------------------------------------
 void loop()
 {
-    // Persistent counter — incremented with each successful Bluetooth send.
-    // Declared static so it retains its value between loop() calls.
     static unsigned long counter = 0;
 
-    // Check whether a Bluetooth device is connected before attempting to send.
-    // Sending without a client would silently fail; this guard avoids that.
-    if (SerialBT.hasClient())
+    // Transmit when a BLE central client is connected
+    if (deviceConnected)
     {
-        // Send a plain-text packet over Bluetooth SPP.
-        // Format: "TEST DATA: <counter>\n"
-        SerialBT.print("TEST DATA: ");
-        SerialBT.println(counter);
+        String message = "TEST DATA: " + String(counter) + "\n";
 
-        // Mirror the transmitted data on the USB Serial Monitor
-        // so the developer can verify what is being sent.
-        Serial.print("Bluetooth -> ");
-        Serial.println(counter);
+        // Transmit via BLE notification
+        pTxCharacteristic->setValue((uint8_t *)message.c_str(), message.length());
+        pTxCharacteristic->notify();
+
+        // Local mirror on USB Serial Monitor
+        Serial.print("BLE -> ");
+        Serial.print(message);
 
         counter++;
     }
     else
     {
-        // No Bluetooth client connected — print status to USB Serial.
-        // The ESP32 continues advertising; connection can happen at any time.
-        Serial.println("Waiting for Bluetooth connection...");
+        Serial.println("Waiting for BLE connection...");
     }
 
-    // Transmit one value per second (1 Hz).
-    // This sketch uses delay() because timing precision is not required here;
-    // it is only a connectivity test, not a sensor acquisition loop.
+    // Auto-restart advertising on client disconnection
+    if (!deviceConnected && oldDeviceConnected)
+    {
+        delay(500); // Give the Bluetooth stack time to settle
+        pServer->startAdvertising();
+        Serial.println("[BLE] Restarted advertising. Ready for reconnection.");
+        oldDeviceConnected = deviceConnected;
+    }
+
+    // Update connection transition tracking
+    if (deviceConnected && !oldDeviceConnected)
+    {
+        oldDeviceConnected = deviceConnected;
+    }
+
+    // 1 Hz transmission interval
     delay(1000);
 }
