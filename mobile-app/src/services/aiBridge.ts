@@ -137,7 +137,7 @@ class AIBridgeService {
     try {
       const durationMs = (this.ecgBuffer.length / 500) * 1000;
       const input: SensorTickInput = {
-        userId: "default_user",
+        userId: getActiveUserId(),
         timestamp: now,
         ecg:
           this.ecgBuffer.length >= 250
