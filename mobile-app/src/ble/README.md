@@ -5,7 +5,7 @@
 
 ---
 
-## 📁 Architecture & File Layout
+## Architecture & File Layout
 
 ```text
 src/ble/
@@ -21,7 +21,7 @@ src/ble/
 
 ---
 
-## 🔌 Hardware Protocol Specification
+## Hardware Protocol Specification
 
 - **GATT Service:** Nordic UART Service (NUS)
   - **Service UUID:** `6E400001-B5A3-F393-E0A9-E50E24DCCA9E`
@@ -42,7 +42,7 @@ src/ble/
 
 ---
 
-## 🛠️ Required Dependencies in Upstream Repo
+## Required Dependencies in Upstream Repo
 
 Ensure the following packages are in `package.json`:
 
@@ -89,7 +89,7 @@ Ensure the following packages are in `package.json`:
 
 ---
 
-## 💻 Usage Examples
+## Usage Examples
 
 ### 1. In UI Connection Screens (`connect-device.tsx`)
 

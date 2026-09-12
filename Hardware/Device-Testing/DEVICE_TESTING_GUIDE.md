@@ -65,7 +65,7 @@ The `Device-Testing/` directory contains standalone diagnostic sketches and indi
 
 ## 3. Protocol v1 Specification (Identical to `ESP32_Sensor_Hub.ino`)
 
-All Bluetooth test sketches have been synchronized to transmit newline-delimited JSON matching the exact schema consumed by the Sanjeevni mobile application ([`packetParser.ts`](file:///d:/SIH_GLAH10_BrajCoders/mobile-app/src/ble/packetParser.ts)):
+All Bluetooth test sketches have been synchronized to transmit newline-delimited JSON matching the exact schema consumed by the Sanjeevni mobile application ([`packetParser.ts`](../../mobile-app/src/ble/packetParser.ts)):
 
 ### GATT Service Configuration
 - **Device Advertising Name:** `ESP32_SENSOR_HUB_BLE`
@@ -97,7 +97,7 @@ All Bluetooth test sketches have been synchronized to transmit newline-delimited
 
 ## 4. Dissection of Field Telemetry (`sample_data.txt`)
 
-The file [`Hardware/sample_data.txt`](file:///d:/SIH_GLAH10_BrajCoders/Hardware/sample_data.txt) contains 1,130 lines of real telemetry captured live from the ESP32. Analysis of this file provides proof of hardware functionality:
+The file [`Hardware/sample_data.txt`](../sample_data.txt) contains 1,130 lines of real telemetry captured live from the ESP32. Analysis of this file provides proof of hardware functionality:
 
 ### 1. Packet Interleaving & Asynchronous Transmission
 In lines 1–10 of `sample_data.txt`:
@@ -141,34 +141,34 @@ In lines 1–10 of `sample_data.txt`:
 Follow this checklist to test each component independently before flashing `ESP32_Sensor_Hub.ino`:
 
 ### Step 1: ADXL345 Verification
-1. Upload [`Device-Testing/ADXL345/ADXL345.ino`](file:///d:/SIH_GLAH10_BrajCoders/Hardware/Device-Testing/ADXL345/ADXL345.ino).
+1. Upload [`ADXL345/ADXL345.ino`](ADXL345/ADXL345.ino).
 2. Open Serial Monitor at `115200 baud`.
 3. Verify that sensor returns `[SUCCESS] ADXL345 detected`.
 4. Place board flat: verify $Z \approx 9.8\text{ m/s}^2$, $X \approx 0$, $Y \approx 0$.
-5. Next, upload [`Device-Testing/ADXL_Bluetooth/ADXL_Bluetooth.ino`](file:///d:/SIH_GLAH10_BrajCoders/Hardware/Device-Testing/ADXL_Bluetooth/ADXL_Bluetooth.ino) and verify the Sanjeevni mobile app connects and plots live acceleration.
+5. Next, upload [`ADXL_Bluetooth/ADXL_Bluetooth.ino`](ADXL_Bluetooth/ADXL_Bluetooth.ino) and verify the Sanjeevni mobile app connects and plots live acceleration.
 
 ### Step 2: BioAmp EXG Pill Verification
-1. Upload [`Device-Testing/Bioamp_EXG/Bioamp_EXG.ino`](file:///d:/SIH_GLAH10_BrajCoders/Hardware/Device-Testing/Bioamp_EXG/Bioamp_EXG.ino).
+1. Upload [`Bioamp_EXG/Bioamp_EXG.ino`](Bioamp_EXG/Bioamp_EXG.ino).
 2. Open Arduino Serial Plotter (Tools $\to$ Serial Plotter) at `115200 baud`.
 3. Connect gel electrodes to skin (Lead I configuration).
 4. Verify clear biopotential baseline centered around 1800–2200 counts with periodic QRS spikes.
-5. Next, upload [`Device-Testing/Bioamp_EXG_Bluetooth/Bioamp_EXG_Bluetooth.ino`](file:///d:/SIH_GLAH10_BrajCoders/Hardware/Device-Testing/Bioamp_EXG_Bluetooth/Bioamp_EXG_Bluetooth.ino) and open the mobile app's **Real-Time ECG Oscilloscope** to observe the glowing 500 Hz waveform.
+5. Next, upload [`Bioamp_EXG_Bluetooth/Bioamp_EXG_Bluetooth.ino`](Bioamp_EXG_Bluetooth/Bioamp_EXG_Bluetooth.ino) and open the mobile app's **Real-Time ECG Oscilloscope** to observe the live 500 Hz waveform.
 
 ### Step 3: DHT11 Thermal Verification
-1. Upload [`Device-Testing/DHT11/DHT11.ino`](file:///d:/SIH_GLAH10_BrajCoders/Hardware/Device-Testing/DHT11/DHT11.ino).
+1. Upload [`DHT11/DHT11.ino`](DHT11/DHT11.ino).
 2. Verify Serial output updates every 2.5 seconds with room temperature (~20–30°C) and humidity (~40–70%).
-3. Upload [`Device-Testing/DHT_Bluetooth/DHT_Bluetooth.ino`](file:///d:/SIH_GLAH10_BrajCoders/Hardware/Device-Testing/DHT_Bluetooth/DHT_Bluetooth.ino) and check that the mobile app updates the Temperature card.
+3. Upload [`DHT_Bluetooth/DHT_Bluetooth.ino`](DHT_Bluetooth/DHT_Bluetooth.ino) and check that the mobile app updates the Temperature card.
 
 ### Step 4: MQ135 Air Quality Verification
-1. Upload [`Device-Testing/MQ135/MQ135.ino`](file:///d:/SIH_GLAH10_BrajCoders/Hardware/Device-Testing/MQ135/MQ135.ino).
+1. Upload [`MQ135/MQ135.ino`](MQ135/MQ135.ino).
 2. Verify 5V power supply to heater (sensor should become warm to the touch after 2 minutes).
 3. Confirm clean air ADC reading is between 600 and 1200 counts.
-4. Upload [`Device-Testing/MQ135_Bluetooth/MQ135_Bluetooth.ino`](file:///d:/SIH_GLAH10_BrajCoders/Hardware/Device-Testing/MQ135_Bluetooth/MQ135_Bluetooth.ino).
+4. Upload [`MQ135_Bluetooth/MQ135_Bluetooth.ino`](MQ135_Bluetooth/MQ135_Bluetooth.ino).
 
 ### Step 5: Moisture / Sweat Electrode Verification
-1. Upload [`Device-Testing/Moisture/Moisture.ino`](file:///d:/SIH_GLAH10_BrajCoders/Hardware/Device-Testing/Moisture/Moisture.ino).
+1. Upload [`Moisture/Moisture.ino`](Moisture/Moisture.ino).
 2. Open air should read ~4095 counts (Dry). Touching damp cloth or skin should cause ADC to drop below 2000 counts.
-3. Upload [`Device-Testing/Moisture_Bluetooth/Moisture_Bluetooth.ino`](file:///d:/SIH_GLAH10_BrajCoders/Hardware/Device-Testing/Moisture_Bluetooth/Moisture_Bluetooth.ino).
+3. Upload [`Moisture_Bluetooth/Moisture_Bluetooth.ino`](Moisture_Bluetooth/Moisture_Bluetooth.ino).
 
 ### Step 6: Full Hub Integration
-Once all 5 sensors pass standalone and individual BLE tests, flash [`ESP32_Sensor_Hub/ESP32_Sensor_Hub.ino`](file:///d:/SIH_GLAH10_BrajCoders/Hardware/ESP32_Sensor_Hub/ESP32_Sensor_Hub.ino) to run the full concurrent 5-sensor system.
+Once all 5 sensors pass standalone and individual BLE tests, flash [`ESP32_Sensor_Hub/ESP32_Sensor_Hub.ino`](../ESP32_Sensor_Hub/ESP32_Sensor_Hub.ino) to run the full concurrent 5-sensor system.
