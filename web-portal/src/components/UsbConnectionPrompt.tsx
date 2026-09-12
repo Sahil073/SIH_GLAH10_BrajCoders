@@ -97,3 +97,4 @@ export const UsbConnectionPrompt: React.FC<UsbConnectionPromptProps> = ({
     </div>
   );
 };
+
