@@ -15,6 +15,7 @@ import Svg, {
 import {
   HistoryPoint,
   MetricKey,
+  MetricSummary,
   METRIC_CONFIGS,
 } from "@/data/mockHistoryData";
 import { useTheme } from "@/store/themeStore";
@@ -22,6 +23,7 @@ import { useTheme } from "@/store/themeStore";
 interface MultiMetricVitalsChartProps {
   points: HistoryPoint[];
   xLabels: string[];
+  summaries?: Record<MetricKey, MetricSummary>;
   height?: number;
 }
 
@@ -54,6 +56,7 @@ function createSplinePath(pts: { x: number; y: number }[]): string {
 export function MultiMetricVitalsChart({
   points,
   xLabels,
+  summaries,
   height = 220,
 }: MultiMetricVitalsChartProps) {
   const { colors, isDark } = useTheme();
@@ -279,6 +282,15 @@ export function MultiMetricVitalsChart({
           {/* Render Curve and Data Points for each Active Metric */}
           {allKeys.map((key) => {
             if (!activeMetrics[key]) return null;
+            if (
+              summaries &&
+              (summaries[key]?.avg === ("—" as any) || summaries[key]?.avg === null)
+            ) {
+              return null;
+            }
+            if (points.every((p) => p.raw[key] <= 0)) {
+              return null;
+            }
             const config = METRIC_CONFIGS[key];
 
             const coords = points.map((p, idx) => ({
@@ -405,7 +417,12 @@ export function MultiMetricVitalsChart({
             {allKeys.map((key) => {
               if (!activeMetrics[key]) return null;
               const config = METRIC_CONFIGS[key];
-              const val = selectedPoint.raw[key];
+              const rawVal = selectedPoint.raw[key];
+              const hasData =
+                summaries && (summaries[key]?.avg as any) !== "—"
+                  ? rawVal > 0
+                  : rawVal > 0;
+              const displayVal = hasData ? `${rawVal} ${config.unit}` : "--";
 
               return (
                 <View key={key} className="w-1/3 flex-row items-center pr-2">
@@ -422,7 +439,7 @@ export function MultiMetricVitalsChart({
                       style={{ color: colors.textPrimary }}
                       className="font-poppins-bold"
                     >
-                      {val} {config.unit}
+                      {displayVal}
                     </Text>
                   </Text>
                 </View>

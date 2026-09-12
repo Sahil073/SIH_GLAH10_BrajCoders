@@ -246,11 +246,11 @@ export async function fetchUserVitalsHistory(
 
     // 3. Build HistoryPoints with forward filling for empty buckets
     const lastKnownRaw: Record<MetricKey, number> = {
-      hr: summaries.hr.avg !== ("—" as any) ? (summaries.hr.avg as number) : 72,
-      spo2: summaries.spo2.avg !== ("—" as any) ? (summaries.spo2.avg as number) : 98,
-      temp: summaries.temp.avg !== ("—" as any) ? (summaries.temp.avg as number) : 36.6,
-      aqi: summaries.aqi.avg !== ("—" as any) ? (summaries.aqi.avg as number) : 45,
-      moisture: summaries.moisture.avg !== ("—" as any) ? (summaries.moisture.avg as number) : 48,
+      hr: summaries.hr.avg !== ("—" as any) ? (summaries.hr.avg as number) : 0,
+      spo2: summaries.spo2.avg !== ("—" as any) ? (summaries.spo2.avg as number) : 0,
+      temp: summaries.temp.avg !== ("—" as any) ? (summaries.temp.avg as number) : 0,
+      aqi: summaries.aqi.avg !== ("—" as any) ? (summaries.aqi.avg as number) : 0,
+      moisture: summaries.moisture.avg !== ("—" as any) ? (summaries.moisture.avg as number) : 0,
       steps: summaries.steps.avg !== ("—" as any) ? (summaries.steps.avg as number) : 0,
     };
 
@@ -272,7 +272,7 @@ export async function fetchUserVitalsHistory(
           raw[key] = Math.round(avg * 10) / 10;
           lastKnownRaw[key] = raw[key];
         }
-        norm[key] = normalizeMetric(key, raw[key]);
+        norm[key] = raw[key] > 0 ? normalizeMetric(key, raw[key]) : -1;
       }
 
       return {

@@ -269,6 +269,7 @@ export default function HistoryScreen() {
         <MultiMetricVitalsChart
           points={dataset.points}
           xLabels={dataset.xLabels}
+          summaries={dataset.summaries}
           height={210}
         />
 
