@@ -30,6 +30,7 @@ class AIBridgeService {
   private lastAlertTimes: Record<string, number> = {};
   private isRunning = false;
   private unsubscribeBle: (() => void) | null = null;
+  private unsubscribeStatus: (() => void) | null = null;
 
   /**
    * Starts the AI bridge, listening to the live BLE stream.
@@ -40,6 +41,12 @@ class AIBridgeService {
 
     this.unsubscribeBle = bleService.addPacketListener((packet: Esp32Packet) => {
       this.handlePacket(packet);
+    });
+
+    this.unsubscribeStatus = bleService.addStatusListener((status) => {
+      if (status !== "connected") {
+        this.reset();
+      }
     });
 
     console.log("[AIBridge] Bridge started. Listening to BLE telemetry.");
@@ -55,6 +62,11 @@ class AIBridgeService {
     if (this.unsubscribeBle) {
       this.unsubscribeBle();
       this.unsubscribeBle = null;
+    }
+
+    if (this.unsubscribeStatus) {
+      this.unsubscribeStatus();
+      this.unsubscribeStatus = null;
     }
 
     console.log("[AIBridge] Bridge stopped.");

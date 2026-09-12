@@ -18,7 +18,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-type ConnectionStatus = "scanning" | "connecting" | "connected";
+type ConnectionStatus = "scanning" | "connecting" | "connected" | "disconnected";
 
 export default function ConnectDeviceScreen() {
   const router = useRouter();
@@ -27,6 +27,7 @@ export default function ConnectDeviceScreen() {
   const {
     isConnected,
     isConnecting,
+    isScanning,
     discoveredDevices,
     startScan,
     stopScan,
@@ -38,7 +39,9 @@ export default function ConnectDeviceScreen() {
     ? "connected"
     : isConnecting || isConnectingLocally
       ? "connecting"
-      : "scanning";
+      : isScanning
+        ? "scanning"
+        : "disconnected";
   const [showTroubleshootModal, setShowTroubleshootModal] = useState(false);
 
   // Radar Pulse Animation Values (3 staggered wave rings)
@@ -164,16 +167,16 @@ export default function ConnectDeviceScreen() {
         (d) =>
           d.name?.toUpperCase().startsWith("ESP32") ||
           d.name?.toUpperCase().includes("SANJEEVNI"),
-      ) ||
-      discoveredDevices[0] ||
-      null
+      ) || null
     );
   }, [discoveredDevices]);
 
-  const displayDeviceName = targetDevice?.name || "SANJEEVNI_TSHIRT";
+  const displayDeviceName = targetDevice?.name || "ESP32_SENSOR_HUB_BLE";
   const displayDeviceMac = targetDevice?.id
     ? `ID: ${targetDevice.id}`
-    : "MAC: 1A:2B:3C:4D:5E:6F";
+    : status === "scanning"
+      ? "Searching nearby..."
+      : "Turn ON ESP32 to pair";
 
   const handleConnect = async () => {
     if (status === "connecting" || status === "connected") return;
@@ -183,7 +186,7 @@ export default function ConnectDeviceScreen() {
       if (targetDevice) {
         await connectDevice(targetDevice.id);
       } else {
-        await connectDevice("SIM-ESP32-HUB");
+        await startScan();
       }
     } finally {
       setIsConnectingLocally(false);
@@ -279,9 +282,13 @@ export default function ConnectDeviceScreen() {
             className="w-full bg-white rounded-2xl px-5 py-4 flex-row items-center justify-between border border-[#E9EFEA] mb-4"
           >
             <Text className="font-poppins-medium text-[15px] text-[#101C16]">
-              {status === "scanning" && "Scanning for devices..."}
-              {status === "connecting" && "Connecting to Sanjeevni..."}
+              {status === "scanning" && "Scanning for ESP32_SENSOR_HUB_BLE..."}
+              {status === "connecting" && "Connecting to Sanjeevni wearable..."}
               {status === "connected" && "Connected successfully!"}
+              {status === "disconnected" &&
+                (targetDevice
+                  ? "Device detected — ready to pair"
+                  : "Wearable not detected")}
             </Text>
 
             {status === "scanning" && (
@@ -323,9 +330,13 @@ export default function ConnectDeviceScreen() {
               <Text className="font-poppins-semibold text-white text-[17px]">
                 Connected!
               </Text>
+            ) : targetDevice ? (
+              <Text className="font-poppins-semibold text-white text-[17px]">
+                Connect to {targetDevice.name || "ESP32"}
+              </Text>
             ) : (
               <Text className="font-poppins-semibold text-white text-[17px]">
-                Connect
+                Search & Connect Wearable
               </Text>
             )}
           </TouchableOpacity>

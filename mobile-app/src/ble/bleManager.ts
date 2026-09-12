@@ -31,6 +31,10 @@ export class BleService {
   private bleManager: any = null;
   private connectedDevice: any = null;
   private isNativeBleAvailable: boolean = false;
+  private isWebBleAvailable: boolean = false;
+  private webDevice: any = null;
+  private webGattServer: any = null;
+  private webTxChar: any = null;
   private streamParser = new StreamPacketParser();
   private discoveredDevicesMap: Map<string, DiscoveredDevice> = new Map();
 
@@ -70,23 +74,51 @@ export class BleService {
     }
   }
 
+  private cleanupWebSubscriptions(): void {
+    if (this.webTxChar) {
+      try {
+        this.webTxChar.stopNotifications();
+      } catch {}
+      this.webTxChar = null;
+    }
+    if (this.webGattServer) {
+      try {
+        this.webGattServer.disconnect();
+      } catch {}
+      this.webGattServer = null;
+    }
+    this.webDevice = null;
+  }
+
   private initBleModule(): void {
+    // 1. Try React Native BLE PLX driver (for Android / iOS native runtimes)
     try {
-      const { BleManager } = require("react-native-ble-plx");
-      this.bleManager = new BleManager();
-      this.isNativeBleAvailable = true;
-      this.log("info", "Native BLE driver initialized.");
+      if (Platform.OS !== "web") {
+        const { BleManager } = require("react-native-ble-plx");
+        this.bleManager = new BleManager();
+        this.isNativeBleAvailable = true;
+        this.log("info", "Native BLE driver initialized.");
+        return;
+      }
     } catch {
       this.isNativeBleAvailable = false;
+    }
+
+    // 2. Try Web Bluetooth API (for Chrome / Edge on laptop & Android)
+    if (typeof navigator !== "undefined" && (navigator as any).bluetooth) {
+      this.isWebBleAvailable = true;
       this.log(
         "info",
-        "Native BLE driver not detected in this runtime (Expo Go mode). Simulation fallback ready.",
+        "Web Bluetooth API detected. Ready to pair with ESP32_SENSOR_HUB_BLE.",
       );
+    } else {
+      this.isWebBleAvailable = false;
+      this.log("info", "No Bluetooth hardware driver detected in this environment.");
     }
   }
 
   public isBleSupported(): boolean {
-    return this.isNativeBleAvailable;
+    return this.isNativeBleAvailable || this.isWebBleAvailable;
   }
 
   public getStatus(): BleConnectionStatus {
@@ -211,7 +243,7 @@ export class BleService {
   }
 
   /**
-   * Start automatic background discovery and immediate auto-connection
+   * Start automatic background discovery and connection to physical ESP32
    */
   public async startAutoConnect(): Promise<void> {
     this.isAutoConnectEnabled = true;
@@ -220,12 +252,19 @@ export class BleService {
       return;
     }
 
+    if (this.isWebBleAvailable) {
+      // In web browsers, Web Bluetooth requires a user gesture.
+      // When triggered by user interaction (e.g. Connect button), open the pairing picker.
+      await this.connectWebBluetooth();
+      return;
+    }
+
     if (!this.isNativeBleAvailable) {
-      this.log(
-        "info",
-        "Running in Expo Go — starting simulated auto-stream...",
+      this.log("info", "No Bluetooth driver detected in this environment.");
+      this.updateStatus(
+        "disconnected",
+        "Bluetooth not supported in this environment",
       );
-      this.startSimulation();
       return;
     }
 
@@ -242,26 +281,21 @@ export class BleService {
   }
 
   /**
-   * Scan for ESP32 and auto-connect to the first matching peripheral
+   * Scan for physical ESP32 and connect to the first matching peripheral
    */
   public async startScan(): Promise<void> {
     if (this.isConnectingOrConnected) return;
 
+    if (this.isWebBleAvailable) {
+      await this.connectWebBluetooth();
+      return;
+    }
+
     if (!this.isNativeBleAvailable) {
-      this.updateStatus("scanning");
-      setTimeout(() => {
-        const simDevice: DiscoveredDevice = {
-          id: "SIM-ESP32-HUB",
-          name: "ESP32_SENSOR_HUB_BLE (Simulated)",
-          rssi: -55,
-          isSimulated: true,
-        };
-        this.discoveredDevicesMap.set(simDevice.id, simDevice);
-        this.notifyDevices();
-        if (this.isAutoConnectEnabled) {
-          this.connectToDevice(simDevice.id);
-        }
-      }, 1000);
+      this.updateStatus(
+        "disconnected",
+        "Native BLE driver not available in this runtime",
+      );
       return;
     }
 
@@ -273,7 +307,7 @@ export class BleService {
 
     this.discoveredDevicesMap.clear();
     this.updateStatus("scanning");
-    this.log("info", "Auto-searching for ESP32 BLE peripheral...");
+    this.log("info", "Auto-searching for ESP32_SENSOR_HUB_BLE peripheral...");
 
     try {
       this.bleManager.startDeviceScan(
@@ -283,7 +317,6 @@ export class BleService {
           if (error) {
             this.log("error", `Scan error: ${error.message}`);
             this.stopScan();
-            this.scheduleReconnect();
             return;
           }
 
@@ -307,11 +340,11 @@ export class BleService {
               this.discoveredDevicesMap.set(device.id, entry);
               this.notifyDevices();
 
-              // AUTOMATIC HANDS-FREE CONNECTION:
+              // AUTOMATIC HANDS-FREE CONNECTION TO REAL DEVICE:
               if (this.isAutoConnectEnabled && !this.isConnectingOrConnected) {
                 this.log(
                   "info",
-                  `Found ${name}! Auto-connecting immediately...`,
+                  `Found ${name}! Connecting to real hardware...`,
                 );
                 this.connectToDevice(device.id);
               }
@@ -320,17 +353,23 @@ export class BleService {
         },
       );
 
-      // Timeout scan after 10s and restart if still looking
+      // Timeout scan after 10s if no ESP32 is detected
       if (this.scanTimeoutTimer) clearTimeout(this.scanTimeoutTimer);
       this.scanTimeoutTimer = setTimeout(() => {
-        if (!this.isConnectingOrConnected && this.isAutoConnectEnabled) {
+        if (!this.isConnectingOrConnected) {
           this.stopScan();
-          this.scheduleReconnect();
+          if (this.discoveredDevicesMap.size === 0) {
+            this.log("info", "Scan finished: No ESP32 device discovered. Ensure ESP32_SENSOR_HUB_BLE is powered on.");
+            this.updateStatus(
+              "disconnected",
+              "No ESP32 found. Ensure device is powered on.",
+            );
+          }
         }
       }, 10000);
     } catch (err: any) {
       this.log("error", `Scan exception: ${err?.message || err}`);
-      this.scheduleReconnect();
+      this.updateStatus("disconnected", err?.message || "Scan failed");
     }
   }
 
@@ -355,12 +394,24 @@ export class BleService {
   public async connectToDevice(deviceId: string): Promise<void> {
     this.stopScan();
     this.cleanupDeviceSubscriptions();
+    this.cleanupWebSubscriptions();
     this.isConnectingOrConnected = true;
     this.updateStatus("connecting");
     this.log("info", `Establishing BLE link with ${deviceId}...`);
 
-    if (deviceId === "SIM-ESP32-HUB" || !this.isNativeBleAvailable) {
+    if (deviceId === "SIM-ESP32-HUB") {
       this.startSimulation();
+      return;
+    }
+
+    if (this.isWebBleAvailable) {
+      await this.connectWebBluetooth();
+      return;
+    }
+
+    if (!this.isNativeBleAvailable) {
+      this.isConnectingOrConnected = false;
+      this.updateStatus("disconnected", "Native BLE not available");
       return;
     }
 
@@ -414,15 +465,14 @@ export class BleService {
         },
       );
 
-      // 4. Handle Disconnect with Automatic Reconnect
+      // 4. Handle Disconnect
       this.disconnectSubscription = device.onDisconnected((error: any) => {
-        this.log("info", `ESP32 disconnected. Auto-reconnecting...`);
+        this.log("info", "ESP32 disconnected.");
         this.cleanupDeviceSubscriptions();
         this.connectedDevice = null;
         this.isConnectingOrConnected = false;
         this.streamParser.reset();
         this.updateStatus("disconnected");
-        this.scheduleReconnect();
       });
 
       this.updateStatus("connected");
@@ -433,7 +483,92 @@ export class BleService {
       this.connectedDevice = null;
       this.isConnectingOrConnected = false;
       this.updateStatus("disconnected", err?.message || "Connection failed");
-      this.scheduleReconnect();
+    }
+  }
+
+  /**
+   * Connect to ESP32_SENSOR_HUB_BLE using the Web Bluetooth API (Chrome / Edge on Laptop & Mobile)
+   */
+  public async connectWebBluetooth(): Promise<void> {
+    if (typeof navigator === "undefined" || !(navigator as any).bluetooth) {
+      this.log("error", "Web Bluetooth is not supported in this browser. Please use Chrome or Edge.");
+      this.updateStatus("disconnected", "Web Bluetooth not supported in this browser");
+      return;
+    }
+
+    this.cleanupWebSubscriptions();
+    this.isConnectingOrConnected = true;
+    this.updateStatus("connecting");
+    this.log("info", "Opening Bluetooth pairing dialog for ESP32_SENSOR_HUB_BLE...");
+
+    try {
+      const device = await (navigator as any).bluetooth.requestDevice({
+        filters: [
+          { name: "ESP32_SENSOR_HUB_BLE" },
+          { namePrefix: "ESP32" },
+          { services: [NUS_SERVICE_UUID.toLowerCase()] },
+        ],
+        optionalServices: [NUS_SERVICE_UUID.toLowerCase()],
+      });
+
+      this.log("info", `Web Bluetooth device selected: ${device.name || device.id}`);
+      this.webDevice = device;
+
+      const discovered: DiscoveredDevice = {
+        id: device.id || "WEB-ESP32-HUB",
+        name: device.name || "ESP32_SENSOR_HUB_BLE",
+        rssi: -50,
+      };
+      this.discoveredDevicesMap.set(discovered.id, discovered);
+      this.notifyDevices();
+
+      device.addEventListener("gattserverdisconnected", () => {
+        this.log("info", "ESP32 Web Bluetooth connection closed.");
+        this.cleanupWebSubscriptions();
+        this.isConnectingOrConnected = false;
+        this.streamParser.reset();
+        this.updateStatus("disconnected");
+      });
+
+      const server = await device.gatt.connect();
+      this.webGattServer = server;
+
+      const service = await server.getPrimaryService(NUS_SERVICE_UUID.toLowerCase());
+      const txChar = await service.getCharacteristic(NUS_TX_CHAR_UUID.toLowerCase());
+      this.webTxChar = txChar;
+
+      await txChar.startNotifications();
+      txChar.addEventListener("characteristicvaluechanged", (event: any) => {
+        const dataView: DataView = event.target.value;
+        const decoder = new TextDecoder("utf-8");
+        const rawChunk = decoder.decode(dataView);
+        const { packets } = this.streamParser.feed(rawChunk);
+
+        for (const packet of packets) {
+          this.onPacketListeners.forEach((cb) => {
+            try {
+              cb(packet);
+            } catch (err) {
+              console.error("Error in packet callback:", err);
+            }
+          });
+        }
+      });
+
+      this.streamParser.reset();
+      this.updateStatus("connected");
+      this.log("info", `Connected to ${device.name || "ESP32_SENSOR_HUB_BLE"} via Web Bluetooth!`);
+    } catch (err: any) {
+      this.cleanupWebSubscriptions();
+      this.isConnectingOrConnected = false;
+      const msg = err?.message || String(err);
+      if (msg.includes("User cancelled") || msg.includes("cancelled")) {
+        this.log("info", "Bluetooth device selection cancelled by user.");
+        this.updateStatus("disconnected");
+      } else {
+        this.log("error", `Web Bluetooth error: ${msg}`);
+        this.updateStatus("disconnected", msg);
+      }
     }
   }
 
@@ -442,7 +577,7 @@ export class BleService {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
 
     this.reconnectTimer = setTimeout(() => {
-      if (!this.isConnectingOrConnected) {
+      if (!this.isConnectingOrConnected && (this.connectedDevice || this.webDevice)) {
         this.log("info", "Auto-reconnecting to ESP32...");
         this.startScan();
       }
@@ -454,6 +589,7 @@ export class BleService {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.stopSimulation();
     this.cleanupDeviceSubscriptions();
+    this.cleanupWebSubscriptions();
 
     if (this.connectedDevice) {
       try {

@@ -71,9 +71,9 @@ export function useDashboardData() {
   const lastSecondaryUpdateRef = useRef<number>(0);
   const SECONDARY_INTERVAL_MS = 2000;
 
-  // When disconnected or user changes, fetch real historical session averages from SQLite scoped to active user
+  // When disconnected or no live packets, fetch real historical session averages from SQLite scoped to active user
   useEffect(() => {
-    if (isConnected) return;
+    if (isConnected && totalPackets > 0) return;
 
     let isMounted = true;
 
@@ -145,9 +145,9 @@ export function useDashboardData() {
     };
   }, [isConnected, activeUserId]);
 
-  // Update dashboard reactively ONLY when BLE is connected, throttled to 2-second fixed intervals
+  // Update dashboard reactively ONLY when BLE is connected AND live packets are received, throttled to 2-second fixed intervals
   useEffect(() => {
-    if (!isConnected) {
+    if (!isConnected || totalPackets === 0) {
       return;
     }
 

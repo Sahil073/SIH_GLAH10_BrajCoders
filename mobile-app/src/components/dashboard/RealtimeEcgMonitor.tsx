@@ -30,12 +30,14 @@ export function RealtimeEcgMonitor() {
   const samplesRef = useRef<number[]>([]);
   const [, setFrameTick] = useState(0);
 
-  // Sync BPM from AI Pan-Tompkins engine
+  // Sync BPM from AI Pan-Tompkins engine and clear buffer on disconnect
   useEffect(() => {
-    if (ai.heartRate && ai.heartRate > 35 && ai.heartRate < 220) {
-      setDisplayBpm(Math.round(ai.heartRate));
-    } else if (!isConnected) {
+    if (!isConnected) {
+      samplesRef.current = [];
       setDisplayBpm(null);
+      setFrameTick((t) => (t + 1) % 1000);
+    } else if (ai.heartRate && ai.heartRate > 35 && ai.heartRate < 220) {
+      setDisplayBpm(Math.round(ai.heartRate));
     }
   }, [ai.heartRate, isConnected]);
 

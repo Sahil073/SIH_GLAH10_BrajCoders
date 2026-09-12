@@ -192,6 +192,12 @@ function handleStatusChange(status: BleConnectionStatus) {
     isSimulating: status === "connected" ? storeState.isSimulating : false,
     connectedDeviceId:
       status === "disconnected" ? null : storeState.connectedDeviceId,
+    sensorData:
+      status === "disconnected" ? { ...INITIAL_SENSOR_STATE } : storeState.sensorData,
+    totalPackets:
+      status === "disconnected" ? 0 : storeState.totalPackets,
+    discoveredDevices:
+      status === "disconnected" ? [] : storeState.discoveredDevices,
   };
   notifySubscribersImmediate();
 }
