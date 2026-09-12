@@ -5,9 +5,15 @@ import { WeeklyBarPoint } from "@/types/dashboard";
 
 /**
  * Calculates a smooth cubic bezier SVG path from coordinate points.
+ * Fully guarded against NaN or non-finite values to prevent Android native Skia crashes.
  */
 function createSplinePath(points: { x: number; y: number }[]): string {
-  if (points.length === 0) return "";
+  if (!points || points.length === 0) return "";
+  const allFinite = points.every(
+    (p) => Number.isFinite(p.x) && Number.isFinite(p.y)
+  );
+  if (!allFinite) return "";
+
   if (points.length === 1) {
     return `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
   }
@@ -23,6 +29,15 @@ function createSplinePath(points: { x: number; y: number }[]): string {
     const cp1y = p1.y + (p2.y - p0.y) / 6;
     const cp2x = p2.x - (p3.x - p0.x) / 6;
     const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+    if (
+      !Number.isFinite(cp1x) ||
+      !Number.isFinite(cp1y) ||
+      !Number.isFinite(cp2x) ||
+      !Number.isFinite(cp2y)
+    ) {
+      return "";
+    }
 
     path += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(
       1
@@ -52,16 +67,23 @@ export function DualWaveChart({
   const paddingX = 4;
   const usableWidth = chartWidth - paddingX * 2;
 
-  const hasUpper = upperValues.length >= 2;
-  const hasLower = lowerValues.length >= 2;
+  const validUpper = upperValues.filter(
+    (v): v is number => typeof v === "number" && Number.isFinite(v)
+  );
+  const validLower = lowerValues.filter(
+    (v): v is number => typeof v === "number" && Number.isFinite(v)
+  );
+
+  const hasUpper = validUpper.length >= 2;
+  const hasLower = validLower.length >= 2;
 
   let upperPath = "";
   if (hasUpper) {
-    const upperMin = Math.min(...upperValues);
-    const upperMax = Math.max(...upperValues);
+    const upperMin = Math.min(...validUpper);
+    const upperMax = Math.max(...validUpper);
     const range = upperMax - upperMin || 1;
-    const upperPoints = upperValues.map((val, idx) => {
-      const x = paddingX + (idx / (upperValues.length - 1)) * usableWidth;
+    const upperPoints = validUpper.map((val, idx) => {
+      const x = paddingX + (idx / (validUpper.length - 1)) * usableWidth;
       const norm = (val - upperMin) / range;
       const y = height - 8 - norm * (height - 16);
       return { x, y };
@@ -71,11 +93,11 @@ export function DualWaveChart({
 
   let lowerPath = "";
   if (hasLower) {
-    const lowerMin = Math.min(...lowerValues);
-    const lowerMax = Math.max(...lowerValues);
+    const lowerMin = Math.min(...validLower);
+    const lowerMax = Math.max(...validLower);
     const range = lowerMax - lowerMin || 1;
-    const lowerPoints = lowerValues.map((val, idx) => {
-      const x = paddingX + (idx / (lowerValues.length - 1)) * usableWidth;
+    const lowerPoints = validLower.map((val, idx) => {
+      const x = paddingX + (idx / (validLower.length - 1)) * usableWidth;
       const norm = (val - lowerMin) / range;
       const y = height - 2 - norm * (height - 18);
       return { x, y };
@@ -158,16 +180,20 @@ export function PulseWaveChart({
   const paddingX = 4;
   const usableWidth = chartWidth - paddingX * 2;
 
-  const hasData = values.length >= 2;
+  const validValues = values.filter(
+    (v): v is number => typeof v === "number" && Number.isFinite(v)
+  );
+
+  const hasData = validValues.length >= 2;
 
   let path = "";
   if (hasData) {
-    const min = Math.min(...values);
-    const max = Math.max(...values);
+    const min = Math.min(...validValues);
+    const max = Math.max(...validValues);
     const range = max - min || 1;
 
-    const points = values.map((val, idx) => {
-      const x = paddingX + (idx / (values.length - 1)) * usableWidth;
+    const points = validValues.map((val, idx) => {
+      const x = paddingX + (idx / (validValues.length - 1)) * usableWidth;
       const norm = (val - min) / range;
       const y = height - 5 - norm * (height - 10);
       return { x, y };
@@ -364,18 +390,22 @@ export function SmoothTrendWaveChart({
   const paddingX = 4;
   const usableWidth = chartWidth - paddingX * 2;
 
-  const hasData = values.length >= 2;
+  const validValues = values.filter(
+    (v): v is number => typeof v === "number" && Number.isFinite(v)
+  );
+
+  const hasData = validValues.length >= 2;
 
   let points: { x: number; y: number }[] = [];
   let path = "";
 
   if (hasData) {
-    const min = Math.min(...values);
-    const max = Math.max(...values);
+    const min = Math.min(...validValues);
+    const max = Math.max(...validValues);
     const range = max - min || 1;
 
-    points = values.map((val, idx) => {
-      const x = paddingX + (idx / (values.length - 1)) * usableWidth;
+    points = validValues.map((val, idx) => {
+      const x = paddingX + (idx / (validValues.length - 1)) * usableWidth;
       const norm = (val - min) / range;
       const y = height - 6 - norm * (height - 12);
       return { x, y };

@@ -48,8 +48,26 @@ export class BleService {
   private simulationInterval: ReturnType<typeof setInterval> | null = null;
   private simSeqCounter: number = 0;
 
+  private monitorSubscription: any = null;
+  private disconnectSubscription: any = null;
+
   constructor() {
     this.initBleModule();
+  }
+
+  private cleanupDeviceSubscriptions(): void {
+    if (this.monitorSubscription) {
+      try {
+        this.monitorSubscription.remove();
+      } catch {}
+      this.monitorSubscription = null;
+    }
+    if (this.disconnectSubscription) {
+      try {
+        this.disconnectSubscription.remove();
+      } catch {}
+      this.disconnectSubscription = null;
+    }
   }
 
   private initBleModule(): void {
@@ -336,6 +354,7 @@ export class BleService {
    */
   public async connectToDevice(deviceId: string): Promise<void> {
     this.stopScan();
+    this.cleanupDeviceSubscriptions();
     this.isConnectingOrConnected = true;
     this.updateStatus("connecting");
     this.log("info", `Establishing BLE link with ${deviceId}...`);
@@ -350,25 +369,28 @@ export class BleService {
         autoConnect: false,
       });
       this.connectedDevice = device;
-      this.log("info", `Connected! Requesting MTU 512...`);
 
-      // 1. Request High MTU
+      // 1. Discover all services and characteristics FIRST (GATT requirement on Android)
+      await device.discoverAllServicesAndCharacteristics();
+
+      // 2. Safely negotiate high MTU after discovery (guarded against native GATT 133)
       if (Platform.OS === "android") {
         try {
+          await new Promise((res) => setTimeout(res, 100));
           await device.requestMTU(512);
-        } catch {}
+        } catch {
+          // Standard MTU is sufficient; gracefully continue without crashing
+        }
       }
-
-      // 2. Discover Services
-      await device.discoverAllServicesAndCharacteristics();
 
       // 3. Monitor Nordic UART TX characteristic
       this.streamParser.reset();
-      device.monitorCharacteristicForService(
+      this.monitorSubscription = device.monitorCharacteristicForService(
         NUS_SERVICE_UUID,
         NUS_TX_CHAR_UUID,
         (error: any, characteristic: any) => {
           if (error) {
+            if (!this.connectedDevice) return;
             this.log("error", `Notification error: ${error.message}`);
             return;
           }
@@ -377,11 +399,7 @@ export class BleService {
             const rawChunk = StreamPacketParser.decodeBase64(
               characteristic.value,
             );
-            const { packets, rawLines } = this.streamParser.feed(rawChunk);
-
-            for (const line of rawLines) {
-              this.log("rx", line);
-            }
+            const { packets } = this.streamParser.feed(rawChunk);
 
             for (const packet of packets) {
               this.onPacketListeners.forEach((cb) => {
@@ -397,8 +415,9 @@ export class BleService {
       );
 
       // 4. Handle Disconnect with Automatic Reconnect
-      device.onDisconnected((error: any, disconnectedDevice: any) => {
+      this.disconnectSubscription = device.onDisconnected((error: any) => {
         this.log("info", `ESP32 disconnected. Auto-reconnecting...`);
+        this.cleanupDeviceSubscriptions();
         this.connectedDevice = null;
         this.isConnectingOrConnected = false;
         this.streamParser.reset();
@@ -410,6 +429,7 @@ export class BleService {
       this.log("info", "Sensor Stream Active (Nordic UART Service)");
     } catch (err: any) {
       this.log("error", `Connection failed: ${err?.message || err}`);
+      this.cleanupDeviceSubscriptions();
       this.connectedDevice = null;
       this.isConnectingOrConnected = false;
       this.updateStatus("disconnected", err?.message || "Connection failed");
@@ -433,6 +453,7 @@ export class BleService {
     this.isAutoConnectEnabled = false;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.stopSimulation();
+    this.cleanupDeviceSubscriptions();
 
     if (this.connectedDevice) {
       try {

@@ -1,6 +1,7 @@
 import { useBleConnection } from "@/ble";
 import { images } from "@/constants/images";
 import { useAuth } from "@clerk/expo";
+import { useUserProfile } from "@/store/userProfileStore";
 import { Redirect, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -22,6 +23,7 @@ type ConnectionStatus = "scanning" | "connecting" | "connected";
 export default function ConnectDeviceScreen() {
   const router = useRouter();
   const { isLoaded, isSignedIn } = useAuth();
+  const { profile, isOfflineUser } = useUserProfile();
   const {
     isConnected,
     isConnecting,
@@ -196,7 +198,7 @@ export default function ConnectDeviceScreen() {
     return null;
   }
 
-  if (!isSignedIn) {
+  if (!isSignedIn && !profile.isLoggedIn && !isOfflineUser) {
     return <Redirect href="/onboarding" />;
   }
 

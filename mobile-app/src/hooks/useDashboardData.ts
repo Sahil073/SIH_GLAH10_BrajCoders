@@ -297,7 +297,7 @@ export function useDashboardData() {
 
       return next;
     });
-  }, [totalPackets, connectionStatus, sensorData, ai]);
+  }, [connectionStatus, sensorData, ai]);
 
   const refreshData = useCallback(async () => {
     setIsLoading(true);
