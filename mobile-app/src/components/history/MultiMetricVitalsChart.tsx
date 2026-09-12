@@ -125,6 +125,61 @@ export function MultiMetricVitalsChart({
   const selectedPoint =
     selectedIndex !== null && points[selectedIndex] ? points[selectedIndex] : null;
 
+  if (points.length < 2) {
+    return (
+      <View
+        onLayout={handleLayout}
+        style={{
+          backgroundColor: colors.cardBg,
+          borderColor: colors.cardBorder,
+        }}
+        className="rounded-3xl p-5 border shadow-sm mb-5"
+      >
+        <View className="w-full flex-row items-center justify-between mb-3">
+          <Text
+            style={{ color: colors.textPrimary }}
+            className="font-poppins-bold text-[17px]"
+          >
+            Vitals Trend
+          </Text>
+          <View
+            style={{ backgroundColor: colors.backgroundSecondary }}
+            className="px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-800"
+          >
+            <Text
+              style={{ color: colors.textMuted }}
+              className="font-poppins-medium text-[10.5px]"
+            >
+              No Live Session
+            </Text>
+          </View>
+        </View>
+
+        <View
+          style={{
+            borderColor: isDark ? "#2A3830" : "#E5E7EB",
+            backgroundColor: isDark ? colors.backgroundSecondary : "#F9FAFB",
+          }}
+          className="w-full py-8 px-4 rounded-2xl border border-dashed items-center justify-center"
+        >
+          <Text className="text-2xl mb-2">📈</Text>
+          <Text
+            style={{ color: colors.textPrimary }}
+            className="font-poppins-semibold text-sm text-center"
+          >
+            Not Enough Data Points
+          </Text>
+          <Text
+            style={{ color: colors.textMuted }}
+            className="font-poppins-regular text-xs text-center mt-1 max-w-[260px]"
+          >
+            Connect the Sanjeevni wearable to record continuous vitals for this time period.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View
       onLayout={handleLayout}

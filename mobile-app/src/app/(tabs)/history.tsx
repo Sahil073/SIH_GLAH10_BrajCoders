@@ -1,16 +1,16 @@
-import React, { useState, useMemo } from "react";
-import { View, Text, ScrollView, TouchableOpacity } from "react-native";
+import React, { useState, useEffect, useMemo } from "react";
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
-  generateDayHistory,
-  generateWeekHistory,
-  generateMonthHistory,
   METRIC_CONFIGS,
   MetricKey,
+  HistoryDataset,
 } from "@/data/mockHistoryData";
 import { MultiMetricVitalsChart } from "@/components/history/MultiMetricVitalsChart";
 import { CalendarPickerModal } from "@/components/history/CalendarPickerModal";
 import { useTheme } from "@/store/themeStore";
+import { useUserProfile } from "@/store/userProfileStore";
+import { fetchUserVitalsHistory } from "@/database";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -42,24 +42,56 @@ const MONTH_NAMES = [
   "Dec",
 ];
 
+const INITIAL_EMPTY_DATASET: HistoryDataset & { hasData: boolean; totalReadingsCount: number } = {
+  points: [],
+  summaries: {
+    hr: { key: "hr", avg: "—" as any, min: "—" as any, max: "—" as any, status: "Normal" },
+    spo2: { key: "spo2", avg: "—" as any, min: "—" as any, max: "—" as any, status: "Normal" },
+    temp: { key: "temp", avg: "—" as any, min: "—" as any, max: "—" as any, status: "Normal" },
+    aqi: { key: "aqi", avg: "—" as any, min: "—" as any, max: "—" as any, status: "Good" },
+    moisture: { key: "moisture", avg: "—" as any, min: "—" as any, max: "—" as any, status: "Normal" },
+    steps: { key: "steps", avg: "—" as any, min: "—" as any, max: "—" as any, status: "Normal" },
+  },
+  xLabels: ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00", "23:59"],
+  hasData: false,
+  totalReadingsCount: 0,
+};
+
 export default function HistoryScreen() {
   const { colors, isDark } = useTheme();
+  const { activeUserId } = useUserProfile();
   const [period, setPeriod] = useState<PeriodTab>("day");
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date(2025, 4, 23)); // 23 May 2025 matching the user reference image
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date()); // Today's real date
   const [calendarVisible, setCalendarVisible] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [dataset, setDataset] = useState<HistoryDataset & { hasData: boolean; totalReadingsCount: number }>(
+    INITIAL_EMPTY_DATASET
+  );
 
-  // Load dataset based on selected period and date
-  const dataset = useMemo(() => {
-    switch (period) {
-      case "week":
-        return generateWeekHistory(selectedDate);
-      case "month":
-        return generateMonthHistory(selectedDate);
-      case "day":
-      default:
-        return generateDayHistory(selectedDate);
-    }
-  }, [period, selectedDate]);
+  // Load real dataset from SQLite based on active user, selected period, and date
+  useEffect(() => {
+    let isMounted = true;
+    setIsLoading(true);
+
+    fetchUserVitalsHistory(activeUserId, period, selectedDate)
+      .then((data) => {
+        if (isMounted) {
+          setDataset(data);
+          setIsLoading(false);
+        }
+      })
+      .catch((err) => {
+        console.warn("[HistoryScreen] Failed to load user vitals:", err);
+        if (isMounted) {
+          setDataset(INITIAL_EMPTY_DATASET);
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeUserId, period, selectedDate]);
 
   // Navigate date backwards/forwards
   const handlePrevDate = () => {
@@ -252,15 +284,35 @@ export default function HistoryScreen() {
             style={{ color: colors.textMuted }}
             className="font-poppins-regular text-xs"
           >
-            Average & Range
+            {dataset.hasData ? `${dataset.totalReadingsCount} records` : "No Records"}
           </Text>
         </View>
+
+        {/* Informative banner if no data points are present in SQLite */}
+        {!dataset.hasData && (
+          <View
+            style={{
+              backgroundColor: isDark ? colors.backgroundSecondary : "#F9FAFB",
+              borderColor: colors.cardBorder,
+            }}
+            className="p-3.5 rounded-2xl border mb-3 flex-row items-center shadow-xs"
+          >
+            <Text className="text-base mr-2.5">ℹ️</Text>
+            <Text
+              style={{ color: colors.textMuted }}
+              className="font-poppins-regular text-xs flex-1 leading-4"
+            >
+              No sensor telemetry recorded in SQLite for this timeframe. Connect wearable to sync live data.
+            </Text>
+          </View>
+        )}
 
         {/* 6 Metrics Summary Cards Grid */}
         <View className="flex-row flex-wrap justify-between">
           {allKeys.map((key) => {
             const config = METRIC_CONFIGS[key];
             const summary = dataset.summaries[key];
+            const hasValue = summary.avg !== ("—" as any);
 
             return (
               <View
@@ -288,7 +340,7 @@ export default function HistoryScreen() {
                       style={{ color: colors.textSecondary }}
                       className="font-poppins-medium text-[10px]"
                     >
-                      {summary.status}
+                      {hasValue ? summary.status : "No Data"}
                     </Text>
                   </View>
                 </View>
@@ -309,7 +361,7 @@ export default function HistoryScreen() {
                   >
                     {summary.avg}
                   </Text>
-                  {config.unit ? (
+                  {config.unit && hasValue ? (
                     <Text
                       style={{ color: colors.textSecondary }}
                       className="font-poppins-medium text-xs ml-1"

@@ -225,3 +225,5 @@ export async function persistRollingBaseline(
     console.warn(`[Database] Failed to update baseline for ${metricType}:`, error);
   }
 }
+
+export { fetchUserVitalsHistory } from "./vitalsHistory";
