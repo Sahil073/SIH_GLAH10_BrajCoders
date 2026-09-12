@@ -13,32 +13,7 @@ Before deploying the unified **`ESP32_Sensor_Hub.ino`** firmware, every hardware
 
 Device testing is organized into two distinct verification tiers:
 
-```
-                      ┌────────────────────────────────────────┐
-                      │ Tier 1: Standalone Hardware Diagnostics│
-                      │       (USB Serial @ 115200 Baud)       │
-                      │  • Verify I2C, ADC, digital timing     │
-                      │  • Check power, ground & pull-ups      │
-                      │  • View live waveforms in Serial Plotter│
-                      └──────────────────┬─────────────────────┘
-                                         │ Passed
-                                         ▼
-                      ┌────────────────────────────────────────┐
-                      │ Tier 2: Dedicated Component BLE Tests  │
-                      │    (Nordic UART Service - Protocol v1) │
-                      │  • Exact JSON schema matching Hub      │
-                      │  • Test throughput, MTU & notifications│
-                      │  • Verify parsing in mobile app        │
-                      └──────────────────┬─────────────────────┘
-                                         │ Passed
-                                         ▼
-                      ┌────────────────────────────────────────┐
-                      │ Tier 3: Unified ESP32_Sensor_Hub.ino   │
-                      │  • Concurrent 500 Hz EXG acquisition   │
-                      │  • Multi-sensor scheduling & fusion    │
-                      │  • Continuous transmission to Edge AI  │
-                      └────────────────────────────────────────┘
-```
+![Multi-Tier Verification Architecture](../../docs/images/test_architecture.jpg)
 
 ---
 

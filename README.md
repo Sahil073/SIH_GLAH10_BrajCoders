@@ -14,53 +14,7 @@ All biomedical signal processing, Pan-Tompkins QRS detection, motion classificat
 
 ## System Architecture & Data Pipeline
 
-```text
-  +-----------------------------------------------------------------------------------+
-  |                                PHYSICAL WEARABLE                                  |
-  |  • BioAmp EXG Pill (500 Hz Biopotential)   • ADXL345 (100 Hz Acq / 25 Hz Motion)  |
-  |  • DHT11 (0.5 Hz Ambient Temp & Humidity)  • MQ135 (10 Hz Acq / 1 Hz Gas ADC)     |
-  |  • Moisture Sensor (10 Hz Acq / 0.5 Hz)    • Custom 2-Layer PCB / 3.7V LiPo       |
-  +-----------------------------------------------------------------------------------+
-                                           │
-                                           ▼
-  +-----------------------------------------------------------------------------------+
-  |                          ESP32 SENSOR HUB (FIRMWARE)                              |
-  |  • Non-blocking multi-rate timer scheduler (Hardware/ESP32_Sensor_Hub/)          |
-  |  • 128-sample circular buffering for high-frequency biopotential                  |
-  |  • Nordic UART Service (NUS) GATT Server (Advertised: ESP32_SENSOR_HUB_BLE)       |
-  |  • 128-byte chunking with 2 ms yield to prevent GATT notify buffer overflow       |
-  +-----------------------------------------------------------------------------------+
-                                           │ Bluetooth Low Energy (100% Offline)
-                                           ▼
-  +-----------------------------------------------------------------------------------+
-  |                             MOBILE APP: BLE INGESTION                             |
-  |  • bleManager.ts: Auto-scan, zero-click reconnect loop, MTU 517 negotiation       |
-  |  • packetParser.ts: Multi-chunk reassembly buffer & newline-delimited JSON parser |
-  |  • bleStore.ts: Reactive telemetry state store                                    |
-  +-----------------------------------------------------------------------------------+
-                                           │
-                                           ▼
-  +-----------------------------------------------------------------------------------+
-  |                          ON-DEVICE AI & DSP ENGINE (TS)                           |
-  |  • 0.5–40 Hz Biquad Bandpass + 50 Hz Notch Filter for AC hum rejection            |
-  |  • Pan-Tompkins adaptive dual-threshold R-peak detector & 200 ms refractory blank |
-  |  • 300–2000 ms physiological RR interval validation & HRV (RMSSD, SDNN)           |
-  |  • Dynamic 3-axis motion classification (REST / LIGHT / ACTIVE)                   |
-  |  • 3-Stage Fall Detection FSM (Freefall <0.5g -> Impact >2.5g -> Immobility)      |
-  |  • NWS Rothfusz polynomial Heat Index (°C) & MQ135 AQI severity mapping           |
-  |  • Multi-window false-alarm gate, Welford's running baseline & SOS trigger logic  |
-  +-----------------------------------------------------------------------------------+
-                     │                                            │
-                     ▼                                            ▼
-  +-------------------------------------+      +--------------------------------------+
-  |      LOCAL SQLITE DATABASE          |      |         REACTIVE MOBILE UI           |
-  |  • readings: Sensor telemetry       |      |  • Live EXG Waveform Oscilloscope    |
-  |  • alerts: Severity-checked stream  |      |  • Dynamic Vitals Sparkline Cards    |
-  |  • user_profile: Medical parameters |      |  • Interactive Historical Analytics  |
-  |  • rolling_baseline: Welford stats  |      |  • Real-Time Multi-Sensor Risk Banner|
-  |  • Automated 7-day data pruning     |      |  • Direct Emergency SOS Modal        |
-  +-------------------------------------+      +--------------------------------------+
-```
+![Sanjeevni System Architecture](docs/images/system_architecture.jpg)
 
 ---
 
@@ -98,6 +52,7 @@ SIH_GLAH10_BrajCoders/
 │   └── sample_data.txt                # 1,130 lines of verified field telemetry
 │
 ├── docs/                              # Project specifications and hackathon decks
+│   ├── images/                        # Research-style architecture and system diagrams
 │   ├── BrajCoder's_SIH_Round1.pdf     # Smart India Hackathon Round 1 presentation
 │   ├── BrajCoders_SIH_2026.pdf        # SIH project submission & architectural slides
 │   ├── sanjeevni_app_spec.pdf         # Mobile application technical specification

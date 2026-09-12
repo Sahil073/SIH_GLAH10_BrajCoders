@@ -8,43 +8,7 @@ The Sanjeevni mobile application is an offline-first wearable telemetry and on-d
 
 The mobile application is structured into four decoupled layers:
 
-```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                             PRESENTATION LAYER                              │
-│  src/app/ (Expo Router: Dashboard, Alerts, History, SOS, Profile, Pair)     │
-│  src/components/ (ModernGraphs visualizer, MetricDetailModal, AIRiskBanner) │
-│  NativeWind / Tailwind CSS styling & Reanimated 4 reactive micro-charts    │
-└──────────────────────────────────────▲──────────────────────────────────────┘
-                                       │ High-level React hooks
-                                       │ (useDashboardData, useBle, useAiRisk)
-┌──────────────────────────────────────┴──────────────────────────────────────┐
-│                             SERVICE & BRIDGE LAYER                          │
-│  src/services/aiBridge.ts                                                   │
-│  • Subscribes to decoded BLE packets from bleStore                          │
-│  • Feeds sliding-window telemetry into ai-engine                            │
-│  • Writes validated vitals and triggered safety alerts into SQLite          │
-└───────────────────────────▲─────────────────────────────────────┬───────────┘
-                            │ Decoded Packets                     │ SQL Writes
-┌───────────────────────────┴────────────────┐   ┌────────────────▼───────────┐
-│              BLE INGESTION CORE            │   │   ON-DEVICE SQLITE STORAGE │
-│  src/ble/                                  │   │  databaseConnections/      │
-│  • bleManager.ts (GATT lifecycle, MTU 517) │   │  • database.ts (Schema v4) │
-│  • packetParser.ts (Reassembly & JSON)     │   │  • readings (7-day prune)  │
-│  • bleStore.ts (Reactive vitals state)     │   │  • alerts (severity check) │
-│  • types.ts (Sensors 1-5 contracts)        │   │  • user_profile & baseline │
-└────────────────────────────────────────────┘   └────────────────────────────┘
-                            │                                     ▲
-                            │ Raw Buffers                         │ Personal
-                            ▼                                     │ Baselines
-┌─────────────────────────────────────────────────────────────────┴───────────┐
-│                           ON-DEVICE AI / DSP CORE                           │
-│  ai-engine/ (Pure TypeScript, Zero Framework Dependencies)                  │
-│  • ecg/: 0.5-40 Hz Biquad Bandpass + 50 Hz Notch, Pan-Tompkins QRS, HRV     │
-│  • motion/: Acceleration RMS, dynamic activity states, 3-stage fall FSM     │
-│  • environment/: NWS Rothfusz heat index calculation & MQ135 AQI classifier │
-│  • decision/: Multi-window false-alarm gate, sensor fusion & SOS triggers   │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+![Sanjeevni Mobile Architecture](../docs/images/mobile_architecture.jpg)
 
 ---
 

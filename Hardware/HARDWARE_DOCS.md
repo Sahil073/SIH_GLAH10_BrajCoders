@@ -33,25 +33,7 @@
 
 ## 1. System Overview
 
-```text
-ESP32
- ├── BioAmp EXG Pill   (GPIO 34)        — biopotential analog signal
- ├── ADXL345           (I2C SDA=21/SCL=22) — 3-axis acceleration
- ├── DHT11             (GPIO 4)         — temperature & humidity
- ├── MQ135             (GPIO 35)        — air quality (raw ADC)
- └── Soil Moisture     (GPIO 32)        — soil moisture (raw ADC)
-          |
-          ▼
-   Bluetooth Low Energy (BLE GATT)
-   Service: Nordic UART Service (NUS)
-   Device name: ESP32_SENSOR_HUB_BLE
-          |
-          ▼
-   Android / iOS / Web Bluetooth client
-          |
-          ▼
-   JSON packets (newline-delimited)
-```
+![ESP32 Sensor System Architecture](../docs/images/system_architecture.jpg)
 
 The ESP32 acquires sensor data continuously regardless of BLE connection
 state. BLE transmission is conditional — if no client is connected, data
