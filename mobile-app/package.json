@@ -39,7 +39,7 @@
   },
   "devDependencies": {
     "@types/base-64": "^1.0.2",
-    "@types/react": "~19.2.2",
+    "@types/react": "^19.3.0",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~57.0.2",
     "typescript": "^5.9.3"
@@ -50,7 +50,8 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "npx tsx databaseConnections/__tests__/databaseSchema.test.ts && npx tsx ai-engine/__tests__/aiPipeline.test.ts && npx tsx __tests__/endToEndIntegration.test.ts"
   },
   "private": true
 }
