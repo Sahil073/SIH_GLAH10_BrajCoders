@@ -1,4 +1,4 @@
-import { useBleConnection } from "@/ble";
+import { bleService, useBleConnection } from "@/ble";
 import { images } from "@/constants/images";
 import { useAuth } from "@clerk/expo";
 import { useUserProfile } from "@/store/userProfileStore";
@@ -10,6 +10,7 @@ import {
     Easing,
     Image,
     Modal,
+    Platform,
     ScrollView,
     StyleSheet,
     Text,
@@ -146,7 +147,9 @@ export default function ConnectDeviceScreen() {
   }, [pulseAnim3]);
 
   useEffect(() => {
-    startScan();
+    if (Platform.OS !== "web") {
+      startScan();
+    }
     return () => {
       stopScan();
     };
@@ -183,7 +186,9 @@ export default function ConnectDeviceScreen() {
 
     setIsConnectingLocally(true);
     try {
-      if (targetDevice) {
+      if (Platform.OS === "web" || bleService.isWebBluetoothSupported()) {
+        await bleService.connectWebBluetooth();
+      } else if (targetDevice) {
         await connectDevice(targetDevice.id);
       } else {
         await startScan();

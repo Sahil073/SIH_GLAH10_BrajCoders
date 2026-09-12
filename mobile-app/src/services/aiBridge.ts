@@ -29,6 +29,7 @@ class AIBridgeService {
   private lastDbLogTime = 0;
   private lastAlertTimes: Record<string, number> = {};
   private isRunning = false;
+  private wasConnected = false;
   private unsubscribeBle: (() => void) | null = null;
   private unsubscribeStatus: (() => void) | null = null;
 
@@ -44,7 +45,10 @@ class AIBridgeService {
     });
 
     this.unsubscribeStatus = bleService.addStatusListener((status) => {
-      if (status !== "connected") {
+      if (status === "connected") {
+        this.wasConnected = true;
+      } else if (this.wasConnected) {
+        this.wasConnected = false;
         this.reset();
       }
     });

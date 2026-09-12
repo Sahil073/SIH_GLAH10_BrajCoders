@@ -287,7 +287,7 @@ export class BleService {
     if (this.isConnectingOrConnected) return;
 
     if (this.isWebBleAvailable) {
-      await this.connectWebBluetooth();
+      this.log("info", "Web Bluetooth ready. Tap 'Connect' to open device chooser.");
       return;
     }
 
@@ -486,14 +486,44 @@ export class BleService {
     }
   }
 
+  public isWebBluetoothSupported(): boolean {
+    return this.isWebBleAvailable;
+  }
+
   /**
    * Connect to ESP32_SENSOR_HUB_BLE using the Web Bluetooth API (Chrome / Edge on Laptop & Mobile)
    */
   public async connectWebBluetooth(): Promise<void> {
     if (typeof navigator === "undefined" || !(navigator as any).bluetooth) {
-      this.log("error", "Web Bluetooth is not supported in this browser. Please use Chrome or Edge.");
-      this.updateStatus("disconnected", "Web Bluetooth not supported in this browser");
+      const err =
+        "Web Bluetooth is not supported in this browser. Please use Google Chrome or Microsoft Edge on Windows/Mac/Android.";
+      this.log("error", err);
+      this.updateStatus("disconnected", err);
       return;
+    }
+
+    if (typeof window !== "undefined" && !window.isSecureContext) {
+      const err =
+        "Web Bluetooth requires a secure context (http://localhost or https://). Please access via localhost.";
+      this.log("error", err);
+      this.updateStatus("disconnected", err);
+      return;
+    }
+
+    // Check adapter availability
+    try {
+      if ((navigator as any).bluetooth.getAvailability) {
+        const available = await (navigator as any).bluetooth.getAvailability();
+        if (!available) {
+          const err =
+            "Bluetooth radio is turned OFF on your computer. Please turn ON Bluetooth in Windows Settings.";
+          this.log("error", err);
+          this.updateStatus("disconnected", err);
+          return;
+        }
+      }
+    } catch {
+      // Non-critical check, continue
     }
 
     this.cleanupWebSubscriptions();
@@ -502,14 +532,31 @@ export class BleService {
     this.log("info", "Opening Bluetooth pairing dialog for ESP32_SENSOR_HUB_BLE...");
 
     try {
-      const device = await (navigator as any).bluetooth.requestDevice({
-        filters: [
-          { name: "ESP32_SENSOR_HUB_BLE" },
-          { namePrefix: "ESP32" },
-          { services: [NUS_SERVICE_UUID.toLowerCase()] },
-        ],
-        optionalServices: [NUS_SERVICE_UUID.toLowerCase()],
-      });
+      let device: any;
+      try {
+        // Attempt 1: Filter by ESP32 name prefixes
+        device = await (navigator as any).bluetooth.requestDevice({
+          filters: [
+            { name: "ESP32_SENSOR_HUB_BLE" },
+            { namePrefix: "ESP32" },
+            { namePrefix: "esp32" },
+            { namePrefix: "SANJEEVNI" },
+          ],
+          optionalServices: [NUS_SERVICE_UUID.toLowerCase()],
+        });
+      } catch (filterErr: any) {
+        // If not found by filter and user didn't cancel, offer acceptAllDevices fallback
+        const msg = filterErr?.message || String(filterErr);
+        if (filterErr?.name === "NotFoundError" && !msg.includes("cancelled") && !msg.includes("User cancelled")) {
+          this.log("info", "No device matched name prefix. Retrying with acceptAllDevices...");
+          device = await (navigator as any).bluetooth.requestDevice({
+            acceptAllDevices: true,
+            optionalServices: [NUS_SERVICE_UUID.toLowerCase()],
+          });
+        } else {
+          throw filterErr;
+        }
+      }
 
       this.log("info", `Web Bluetooth device selected: ${device.name || device.id}`);
       this.webDevice = device;
@@ -530,10 +577,14 @@ export class BleService {
         this.updateStatus("disconnected");
       });
 
+      this.log("info", "Connecting to GATT Server...");
       const server = await device.gatt.connect();
       this.webGattServer = server;
 
+      this.log("info", "Discovering Nordic UART Service...");
       const service = await server.getPrimaryService(NUS_SERVICE_UUID.toLowerCase());
+
+      this.log("info", "Subscribing to TX notifications...");
       const txChar = await service.getCharacteristic(NUS_TX_CHAR_UUID.toLowerCase());
       this.webTxChar = txChar;
 
@@ -563,8 +614,13 @@ export class BleService {
       this.isConnectingOrConnected = false;
       const msg = err?.message || String(err);
       if (msg.includes("User cancelled") || msg.includes("cancelled")) {
-        this.log("info", "Bluetooth device selection cancelled by user.");
+        this.log("info", "Bluetooth pairing dialog cancelled by user.");
         this.updateStatus("disconnected");
+      } else if (msg.includes("NetworkError") || msg.includes("failed for unknown reason")) {
+        const detail =
+          "GATT connection failed. If the ESP32 is already connected to another device (e.g. your phone), disconnect it there first.";
+        this.log("error", detail);
+        this.updateStatus("disconnected", detail);
       } else {
         this.log("error", `Web Bluetooth error: ${msg}`);
         this.updateStatus("disconnected", msg);
