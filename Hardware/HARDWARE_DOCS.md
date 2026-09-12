@@ -622,6 +622,8 @@ The system has been synthesized into an integrated, production-grade custom PCB 
 - **Complete Engineering Guide:** Refer to [`Hardware/Sanjeevni_PCB/PCB_Design_Guide.md`](Sanjeevni_PCB/PCB_Design_Guide.md) for detailed trace widths, impedance matching, DRC rules, and manufacturing specifications.
 - **Schematic Source:** [`Hardware/Sanjeevni_PCB/Sanjeevni_PCB.kicad_sch`](Sanjeevni_PCB/Sanjeevni_PCB.kicad_sch) (PDF export: [`PCB schema.pdf`](Sanjeevni_PCB/PCB%20schema.pdf))
 - **PCB Layout Source:** [`Hardware/Sanjeevni_PCB/Sanjeevni_PCB.kicad_pcb`](Sanjeevni_PCB/Sanjeevni_PCB.kicad_pcb) (PDF export: [`PCB design.pdf`](Sanjeevni_PCB/PCB%20design.pdf))
+- **Schematic Source:** [`Hardware/Sanjeevni_PCB/Sanjeevni_PCB.kicad_sch`](Sanjeevni_PCB/Sanjeevni_PCB.kicad_sch) (PDF export: [`PCB_Schematic.pdf`](Sanjeevni_PCB/PCB_Schematic.pdf))
+- **PCB Layout Source:** [`Hardware/Sanjeevni_PCB/Sanjeevni_PCB.kicad_pcb`](Sanjeevni_PCB/Sanjeevni_PCB.kicad_pcb) (PDF export: [`PCB_Design.pdf`](Sanjeevni_PCB/PCB_Design.pdf))
 - **Stackup & Geometry:**
   - 2-layer FR4 standard process (1.6 mm thickness, 1 oz / $35\text{ µm}$ copper foil).
   - Dedicated bottom ground plane with analog star-grounding under the BioAmp EXG instrumentation node.

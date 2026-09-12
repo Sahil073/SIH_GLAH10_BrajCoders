@@ -29,6 +29,8 @@ Hardware/
 │   ├── Sanjeevni_PCB.kicad_pcb    # KiCad 2-layer PCB layout
 │   ├── PCB schema.pdf             # Exported schematic PDF
 │   ├── PCB design.pdf             # Exported board layout PDF
+│   ├── PCB_Schematic.pdf          # Exported schematic PDF
+│   ├── PCB_Design.pdf             # Exported board layout PDF
 │   ├── PCB_Design_Guide.md        # Circuit theory, BOM, and assembly guide
 │   ├── README.md                  # PCB folder overview and layer stackup
 │   └── images/                    # 3D renders (top view, isometric views)

@@ -32,7 +32,7 @@ import {
   clearLocalUserProfile as rawClearLocalUserProfile,
   normalizeUserId,
   LocalUserProfile,
-} from "../../databaseConnections/database";
+} from "./database";
 
 export { normalizeUserId, LocalUserProfile };
 

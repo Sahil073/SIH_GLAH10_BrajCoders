@@ -4,7 +4,7 @@
 // Replaces static mock random-walk data with actual wearable telemetry.
 // =============================================================================
 
-import { getDb, normalizeUserId } from "../../databaseConnections/database";
+import { getDb, normalizeUserId } from "./database";
 import {
   HistoryDataset,
   HistoryPoint,

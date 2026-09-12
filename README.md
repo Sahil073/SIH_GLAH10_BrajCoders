@@ -44,6 +44,8 @@ SIH_GLAH10_BrajCoders/
 │   │   ├── Sanjeevni_PCB.kicad_pcb    # 2-layer PCB layout
 │   │   ├── PCB schema.pdf             # Exported schematic reference
 │   │   ├── PCB design.pdf             # Exported board layout reference
+│   │   ├── PCB_Schematic.pdf          # Exported schematic reference
+│   │   ├── PCB_Design.pdf             # Exported board layout reference
 │   │   ├── PCB_Design_Guide.md        # Comprehensive electrical BOM and layout notes
 │   │   ├── README.md                  # PCB subsystem overview and stackup
 │   │   └── images/                    # 3D board renders
@@ -54,6 +56,7 @@ SIH_GLAH10_BrajCoders/
 ├── docs/                              # Project specifications and hackathon decks
 │   ├── images/                        # Research-style architecture and system diagrams
 │   ├── BrajCoder's_SIH_Round1.pdf     # Smart India Hackathon Round 1 presentation
+│   ├── BrajCoders_SIH_Round1.pdf      # Smart India Hackathon Round 1 presentation
 │   ├── BrajCoders_SIH_2026.pdf        # SIH project submission & architectural slides
 │   ├── sanjeevni_app_spec.pdf         # Mobile application technical specification
 │   ├── sanjeevni_buildguide.pdf       # Hardware assembly and prototyping guide
@@ -86,6 +89,13 @@ SIH_GLAH10_BrajCoders/
 │   │   │   └── connect-device.tsx     # BLE device discovery and pairing screen
 │   │   ├── ble/                       # BLE Central manager, reassembly & reactive store
 │   │   ├── components/                # Reusable UI widgets, sparklines, modals
+│   │   ├── database/                  # On-device SQLite persistence layer (Schema v4)
+│   │   │   ├── index.ts               # Public API wrapper & multi-user queries
+│   │   │   ├── database.ts            # Schema definitions, CRUD & retention pruning
+│   │   │   ├── database.web.ts        # Web-safe mock fallback for browsers
+│   │   │   ├── vitalsHistory.ts       # Time-series vitals history query service
+│   │   │   ├── __tests__/             # Automated 12-test database test suite
+│   │   │   └── README.md              # Table schemas, indices & retention policy
 │   │   ├── hooks/                     # Custom hooks (useDashboardData, useBle, useAiRisk)
 │   │   └── services/                  # aiBridge.ts (BLE -> AI Pipeline -> SQLite)
 │   ├── __tests__/                     # End-to-end hardware-to-UI integration test

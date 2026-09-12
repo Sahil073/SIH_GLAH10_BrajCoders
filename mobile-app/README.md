@@ -57,6 +57,13 @@ mobile-app/
 │   ├── components/                     # Modular UI components (charts, cards, banners)
 │   ├── constants/                      # Image registries and theme constants
 │   ├── data/                           # Mock datasets and metric details
+│   ├── database/                       # Local SQLite persistence engine
+│   │   ├── index.ts                    # Public API wrapper & safe multi-user queries
+│   │   ├── database.ts                 # Schema v4 table definitions, CRUD & pruning
+│   │   ├── database.web.ts             # Safe in-memory mock fallback for web
+│   │   ├── vitalsHistory.ts            # Time-series vitals history aggregation service
+│   │   ├── __tests__/                  # 12-test SQLite schema verification suite
+│   │   └── README.md                   # Table schemas, indices & retention policy
 │   ├── hooks/                          # Custom React hooks (useDashboardData, etc.)
 │   ├── services/                       # aiBridge.ts (BLE -> AI Engine -> SQLite)
 │   ├── store/                          # User profile and UI state stores
@@ -160,6 +167,7 @@ npx tsx ai-engine/__tests__/aiPipeline.test.ts
 
 # 2. SQLite Database & Schema Test (12 tests):
 npx tsx databaseConnections/__tests__/databaseSchema.test.ts
+npx tsx src/database/__tests__/databaseSchema.test.ts
 
 # 3. Full End-to-End System Integration Test:
 npx tsx __tests__/endToEndIntegration.test.ts

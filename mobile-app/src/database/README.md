@@ -8,8 +8,11 @@ This directory implements the local, zero-cloud SQLite persistence layer for the
 
 ```text
 databaseConnections/
+src/database/
+├── index.ts                         # Public API wrapper, safe initialization & multi-user queries
 ├── database.ts                      # Core SQLite engine, Schema v4 migrations, CRUD & pruning
 ├── database.web.ts                  # Web-safe mock fallback for browser execution
+├── vitalsHistory.ts                 # Time-series vitals history aggregation & query service
 ├── __tests__/
 │   └── databaseSchema.test.ts       # 12-test automated verification suite
 └── README.md                        # This specification
@@ -132,5 +135,6 @@ npm run test:db
 
 # Or run directly inside mobile-app:
 npx tsx databaseConnections/__tests__/databaseSchema.test.ts
+npx tsx src/database/__tests__/databaseSchema.test.ts
 ```
 

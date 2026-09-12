@@ -115,6 +115,10 @@ build/
 **/*-backups/
 *_autosave-*
 *.lck
+~*.lck
+~*
+scratch/
+**/scratch/
 *.kicad_prl
 sym-lib-table
 fp-lib-table

@@ -1,5 +1,6 @@
 // =============================================================================
 // databaseConnections/__tests__/databaseSchema.test.ts
+// src/database/__tests__/databaseSchema.test.ts
 // Verifies Sanjeevni SQLite schema, tables, indexes, constraints, and queries
 // =============================================================================
 

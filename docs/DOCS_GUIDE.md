@@ -11,6 +11,7 @@ This directory contains reference documents, technical specifications, hardware 
 | [`sanjeevni_app_spec.pdf`](sanjeevni_app_spec.pdf) | Technical Specification | Functional and architectural specification of the Sanjeevni mobile companion application. Details UI state machines, offline-first data flows, BLE protocol contracts, on-device AI integration, and local SQLite persistence. |
 | [`sanjeevni_buildguide.pdf`](sanjeevni_buildguide.pdf) | Hardware Build Guide | Step-by-step assembly instructions for breadboard prototyping and custom hardware integration. Covers ESP32 wiring, pinouts, passive filtering components, sensor breakout modules, and power supply considerations. |
 | [`BrajCoder's_SIH_Round1.pdf`](BrajCoder's_SIH_Round1.pdf) | Presentation Deck | Smart India Hackathon Round 1 presentation covering the initial problem statement, target demographics (industrial workers, miners, athletes), technical approach, and system block diagrams. |
+| [`BrajCoders_SIH_Round1.pdf`](BrajCoders_SIH_Round1.pdf) | Presentation Deck | Smart India Hackathon Round 1 presentation covering the initial problem statement, target demographics (industrial workers, miners, athletes), technical approach, and system block diagrams. |
 | [`BrajCoders_SIH_2026.pdf`](BrajCoders_SIH_2026.pdf) | Presentation Deck | Comprehensive hackathon project submission detailing the working hardware prototype, on-device DSP algorithms (Pan-Tompkins, Biquad IIR, Rothfusz heat index), custom PCB design, test results, and field deployment feasibility. |
 
 ---

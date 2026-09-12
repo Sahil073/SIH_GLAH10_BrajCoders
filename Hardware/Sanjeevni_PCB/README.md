@@ -13,8 +13,11 @@ This directory contains the schematic design, printed circuit board (PCB) layout
 | [`Sanjeevni_PCB.kicad_pro`](Sanjeevni_PCB.kicad_pro) | Project File | KiCad project configuration and library mappings. |
 | [`PCB schema.pdf`](<PCB schema.pdf>) | Schematic Export | High-resolution PDF export of the complete circuit schematic for easy review without KiCad installed. |
 | [`PCB design.pdf`](<PCB design.pdf>) | Layout Export | High-resolution PDF export of the top and bottom copper layers, silkscreen, and drill guides. |
+| [`PCB_Schematic.pdf`](PCB_Schematic.pdf) | Schematic Export | High-resolution PDF export of the complete circuit schematic for easy review without KiCad installed. |
+| [`PCB_Design.pdf`](PCB_Design.pdf) | Layout Export | High-resolution PDF export of the top and bottom copper layers, silkscreen, and drill guides. |
 | [`PCB_Design_Guide.md`](PCB_Design_Guide.md) | Engineering Guide | In-depth documentation detailing the Bill of Materials (BOM), trace width calculations, noise isolation, and step-by-step routing methodology. |
 | [`images/`](images/) | 3D Visualizations | Rendered views of the populated board: [top view](images/top%20view.png), [isometric view 1](images/isometric%20view.png), [isometric view 2](images/isometric%20view%202.png). |
+| [`images/`](images/) | 3D Visualizations | Rendered views of the populated board: [top view](images/top_view.png), [isometric view 1](images/isometric_view_1.png), [isometric view 2](images/isometric_view_2.png). |
 
 ---
 

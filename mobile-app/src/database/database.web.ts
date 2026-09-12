@@ -1,5 +1,6 @@
 // =============================================================================
 // databaseConnections/database.web.ts
+// src/database/database.web.ts
 // Web Browser implementation of Sanjeevni database layer.
 // Replaces expo-sqlite with localStorage & in-memory store on Web,
 // preventing "Worker chunk not found for expo-sqlite/web/worker.ts" errors.
