@@ -34,13 +34,18 @@ export default function ProfileScreen() {
   } = useBle();
 
   const [isSigningOut, setIsSigningOut] = useState(false);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Edit form state
+  // Modal states: cleanly separated
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+  const [isBiometricsModalOpen, setIsBiometricsModalOpen] = useState(false);
+
+  // Account form state
   const [name, setName] = useState(profile.name || "");
   const [email, setEmail] = useState(profile.email || "");
   const [pin, setPin] = useState(profile.pin || "");
+
+  // Biometrics & Health form state
   const [age, setAge] = useState(String(profile.age || ""));
   const [gender, setGender] = useState<GenderType>(profile.gender || "Other");
   const [heightCm, setHeightCm] = useState(String(profile.heightCm || ""));
@@ -53,10 +58,14 @@ export default function ProfileScreen() {
   const isConnected = connectionStatus === "connected";
   const connectedDevice = discoveredDevices.find((d) => d.id === connectedDeviceId);
 
-  const openEditModal = () => {
+  const openAccountModal = () => {
     setName(profile.name || "");
     setEmail(profile.email || "");
     setPin(profile.pin || "");
+    setIsAccountModalOpen(true);
+  };
+
+  const openBiometricsModal = () => {
     setAge(String(profile.age || ""));
     setGender(profile.gender || "Other");
     setHeightCm(String(profile.heightCm || ""));
@@ -65,12 +74,12 @@ export default function ProfileScreen() {
     setMedicalCondition(profile.medicalCondition || "");
     setEmergencyName(profile.emergencyContactName || "");
     setEmergencyPhone(profile.emergencyContactPhone || "");
-    setIsEditModalOpen(true);
+    setIsBiometricsModalOpen(true);
   };
 
-  const handleSaveProfile = async () => {
+  const handleSaveAccount = async () => {
     if (!name.trim()) {
-      Alert.alert("Required Field", "Please enter a valid name.");
+      Alert.alert("Required Field", "Please enter a valid worker name.");
       return;
     }
 
@@ -80,6 +89,21 @@ export default function ProfileScreen() {
         name: name.trim(),
         email: email.trim(),
         pin: pin.trim(),
+      });
+      setIsAccountModalOpen(false);
+      Alert.alert("Success", "Account credentials updated successfully.");
+    } catch (err) {
+      console.warn("Failed to update account credentials:", err);
+      Alert.alert("Error", "Could not save account changes.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveBiometrics = async () => {
+    setIsSaving(true);
+    try {
+      await updateProfile({
         age: parseInt(age, 10) || profile.age,
         gender,
         heightCm: parseFloat(heightCm) || profile.heightCm,
@@ -89,11 +113,11 @@ export default function ProfileScreen() {
         emergencyContactName: emergencyName.trim() || "Emergency Contact",
         emergencyContactPhone: emergencyPhone.trim() || "+91 98765 43210",
       });
-      setIsEditModalOpen(false);
-      Alert.alert("Success", "Profile and credentials updated successfully.");
+      setIsBiometricsModalOpen(false);
+      Alert.alert("Success", "Health and medical profile updated successfully.");
     } catch (err) {
-      console.warn("Failed to update profile:", err);
-      Alert.alert("Error", "Could not save profile changes.");
+      console.warn("Failed to update biometrics:", err);
+      Alert.alert("Error", "Could not save health profile changes.");
     } finally {
       setIsSaving(false);
     }
@@ -107,7 +131,7 @@ export default function ProfileScreen() {
       try {
         await signOut();
       } catch {
-        // Clerk sign out error caught if offline
+        // Ignore Clerk signOut rejection if offline
       }
     } catch (err) {
       console.warn("Sign out error:", err);
@@ -131,7 +155,7 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       <ScrollView
-        contentContainerStyle={{ paddingBottom: 110, paddingTop: 12 }}
+        contentContainerStyle={{ paddingBottom: 120, paddingTop: 12 }}
         showsVerticalScrollIndicator={false}
         className="px-5"
       >
@@ -151,7 +175,7 @@ export default function ProfileScreen() {
           </Text>
         </View>
 
-        {/* User Card */}
+        {/* User Card: Account Credentials */}
         <View
           style={{ backgroundColor: colors.cardBg, borderColor: colors.cardBorder }}
           className="rounded-2xl p-4 mb-4 border shadow-sm flex-row items-center justify-between"
@@ -196,7 +220,7 @@ export default function ProfileScreen() {
                   style={{ color: colors.textMuted }}
                   className="font-poppins-medium text-[10.5px]"
                 >
-                  {isOfflineUser ? "Phone Local Storage" : "Google Account"}
+                  {isOfflineUser ? "Phone Local Storage (BLE Direct)" : "Google Account"}
                 </Text>
               </View>
             </View>
@@ -204,7 +228,7 @@ export default function ProfileScreen() {
 
           <TouchableOpacity
             activeOpacity={0.7}
-            onPress={openEditModal}
+            onPress={openAccountModal}
             style={{
               backgroundColor: isDark ? colors.backgroundSecondary : "#EBF5EE",
               borderColor: colors.cardBorder,
@@ -215,10 +239,61 @@ export default function ProfileScreen() {
               style={{ color: isDark ? colors.textPrimary : "#214332" }}
               className="font-poppins-semibold text-xs"
             >
-              Edit ›
+              Edit Account ›
             </Text>
           </TouchableOpacity>
         </View>
+
+        {/* Offline User: Direct Sign In with Google Prompt Card */}
+        {isOfflineUser && (
+          <View
+            style={{
+              backgroundColor: isDark ? "#14281E" : "#EDF6F0",
+              borderColor: isDark ? "#234735" : "#C8E3D2",
+            }}
+            className="rounded-2xl p-4 mb-4 border shadow-xs"
+          >
+            <View className="flex-row items-center justify-between mb-2">
+              <View className="flex-row items-center gap-2">
+                <Text className="text-xl">☁️</Text>
+                <Text
+                  style={{ color: isDark ? "#A7F3D0" : "#1E3A2B" }}
+                  className="font-poppins-bold text-sm"
+                >
+                  Sign In with Google Account
+                </Text>
+              </View>
+              <View
+                style={{ backgroundColor: isDark ? "#064E3B" : "#D1FAE5" }}
+                className="px-2 py-0.5 rounded-full"
+              >
+                <Text
+                  style={{ color: isDark ? "#6EE7B7" : "#065F46" }}
+                  className="font-poppins-semibold text-[10px]"
+                >
+                  Cloud Sync
+                </Text>
+              </View>
+            </View>
+
+            <Text
+              style={{ color: isDark ? "#D1D5DB" : "#456353" }}
+              className="font-poppins-regular text-xs mb-3"
+            >
+              Switch from offline storage to your Google account to sync medical records and AI baselines across devices.
+            </Text>
+
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => router.push("/(auth)/sign-in")}
+              className="w-full py-3 bg-[#214332] rounded-xl items-center justify-center shadow-xs"
+            >
+              <Text className="font-poppins-semibold text-white text-xs tracking-wide">
+                Sign In to Cloud Account ›
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Appearance & Theme Mode Selector */}
         <View
@@ -355,7 +430,7 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Health Profile Card */}
+        {/* Health Profile Card: Dedicated Biometrics */}
         <View
           style={{ backgroundColor: colors.cardBg, borderColor: colors.cardBorder }}
           className="rounded-2xl p-4 mb-5 border shadow-sm"
@@ -369,7 +444,7 @@ export default function ProfileScreen() {
             </Text>
             <TouchableOpacity
               activeOpacity={0.7}
-              onPress={openEditModal}
+              onPress={openBiometricsModal}
               style={{
                 backgroundColor: isDark ? colors.backgroundSecondary : "#EBF5EE",
                 borderColor: colors.cardBorder,
@@ -380,7 +455,7 @@ export default function ProfileScreen() {
                 style={{ color: isDark ? colors.textPrimary : "#214332" }}
                 className="font-poppins-semibold text-[11px]"
               >
-                Edit Details ›
+                Edit Vitals ›
               </Text>
             </TouchableOpacity>
           </View>
@@ -428,6 +503,24 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {/* Switch Account or Sign In to Another Profile */}
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => router.push("/(auth)/sign-in")}
+          style={{
+            backgroundColor: colors.cardBg,
+            borderColor: colors.cardBorder,
+          }}
+          className="w-full py-3.5 rounded-2xl border items-center justify-center mb-3 shadow-xs"
+        >
+          <Text
+            style={{ color: colors.textPrimary }}
+            className="font-poppins-semibold text-sm"
+          >
+            Sign In to Different Account ›
+          </Text>
+        </TouchableOpacity>
+
         {/* Sign Out Button */}
         <TouchableOpacity
           activeOpacity={0.8}
@@ -449,12 +542,12 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       </ScrollView>
 
-      {/* Edit User Credentials & Information Modal */}
+      {/* Modal 1: Edit Account Credentials (Name, Email, PIN) */}
       <Modal
-        visible={isEditModalOpen}
+        visible={isAccountModalOpen}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setIsEditModalOpen(false)}
+        onRequestClose={() => setIsAccountModalOpen(false)}
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -470,11 +563,11 @@ export default function ProfileScreen() {
                   style={{ color: colors.textPrimary }}
                   className="font-poppins-bold text-xl"
                 >
-                  Edit Profile & Credentials
+                  Edit Account Credentials
                 </Text>
                 <TouchableOpacity
                   activeOpacity={0.7}
-                  onPress={() => setIsEditModalOpen(false)}
+                  onPress={() => setIsAccountModalOpen(false)}
                   style={{ backgroundColor: colors.backgroundSecondary }}
                   className="w-8 h-8 rounded-full items-center justify-center"
                 >
@@ -482,11 +575,11 @@ export default function ProfileScreen() {
                 </TouchableOpacity>
               </View>
 
-              <ScrollView showsVerticalScrollIndicator={false} className="space-y-3.5">
+              <ScrollView showsVerticalScrollIndicator={false} className="space-y-4">
                 {/* Full Name */}
                 <View>
                   <Text style={{ color: colors.textSecondary }} className="font-poppins-medium text-xs mb-1">
-                    Full Name
+                    Worker Full Name
                   </Text>
                   <TextInput
                     value={name}
@@ -505,7 +598,7 @@ export default function ProfileScreen() {
                 {/* Email Address */}
                 <View>
                   <Text style={{ color: colors.textSecondary }} className="font-poppins-medium text-xs mb-1">
-                    Email / User ID
+                    Email / Account ID
                   </Text>
                   <TextInput
                     value={email}
@@ -544,6 +637,68 @@ export default function ProfileScreen() {
                   />
                 </View>
 
+                {/* Save Button */}
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  disabled={isSaving}
+                  onPress={handleSaveAccount}
+                  style={{
+                    backgroundColor: colors.textPrimary,
+                    borderColor: colors.cardBorder,
+                  }}
+                  className="w-full py-3.5 rounded-2xl border items-center justify-center mt-3 mb-6"
+                >
+                  {isSaving ? (
+                    <ActivityIndicator size="small" color={isDark ? "#121212" : "#FFFFFF"} />
+                  ) : (
+                    <Text
+                      style={{ color: isDark ? "#121212" : "#FFFFFF" }}
+                      className="font-poppins-semibold text-sm"
+                    >
+                      Save Account Credentials
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Modal 2: Edit Health & Medical Profile (Biometrics) */}
+      <Modal
+        visible={isBiometricsModalOpen}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setIsBiometricsModalOpen(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={{ flex: 1 }}
+        >
+          <View className="flex-1 justify-end bg-black/60">
+            <View
+              style={{ backgroundColor: colors.cardBg }}
+              className="rounded-t-[32px] p-6 max-h-[85%]"
+            >
+              <View className="flex-row items-center justify-between mb-4">
+                <Text
+                  style={{ color: colors.textPrimary }}
+                  className="font-poppins-bold text-xl"
+                >
+                  Edit Health & Vitals Profile
+                </Text>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => setIsBiometricsModalOpen(false)}
+                  style={{ backgroundColor: colors.backgroundSecondary }}
+                  className="w-8 h-8 rounded-full items-center justify-center"
+                >
+                  <Text style={{ color: colors.textSecondary }} className="font-bold text-sm">✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false} className="space-y-3.5">
                 {/* Age & Blood Group */}
                 <View className="flex-row space-x-3">
                   <View className="flex-1">
@@ -687,7 +842,7 @@ export default function ProfileScreen() {
                 <TouchableOpacity
                   activeOpacity={0.8}
                   disabled={isSaving}
-                  onPress={handleSaveProfile}
+                  onPress={handleSaveBiometrics}
                   style={{
                     backgroundColor: colors.textPrimary,
                     borderColor: colors.cardBorder,
@@ -701,7 +856,7 @@ export default function ProfileScreen() {
                       style={{ color: isDark ? "#121212" : "#FFFFFF" }}
                       className="font-poppins-semibold text-sm"
                     >
-                      Save Profile & Credentials
+                      Save Health Profile
                     </Text>
                   )}
                 </TouchableOpacity>
