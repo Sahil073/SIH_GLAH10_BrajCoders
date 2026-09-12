@@ -9,21 +9,23 @@ import { useUserProfile } from "@/store/userProfileStore";
 export default function OnboardingScreen() {
   const router = useRouter();
   const { isLoaded, isSignedIn } = useAuth();
-  const { profile } = useUserProfile();
+  const { profile, login } = useUserProfile();
 
   const handleGetStarted = () => {
     router.push("/(auth)/sign-up");
   };
 
-  if (!isLoaded) {
-    return null;
+  const handleContinueOffline = async () => {
+    await login();
+    router.replace("/(tabs)");
+  };
+
+  if (profile.isLoggedIn || isSignedIn) {
+    return <Redirect href="/(tabs)" />;
   }
 
-  if (isSignedIn) {
-    if (!profile.isCompleted) {
-      return <Redirect href="/onboarding-health" />;
-    }
-    return <Redirect href="/(tabs)" />;
+  if (!isLoaded) {
+    return null;
   }
 
   return (
@@ -186,7 +188,7 @@ export default function OnboardingScreen() {
 
           <TouchableOpacity
             activeOpacity={0.8}
-            onPress={() => router.replace("/(tabs)")}
+            onPress={handleContinueOffline}
             className="w-full py-4 px-6 mt-3 border border-[#214332]/25 bg-[#F0F5F2] rounded-full flex-row items-center justify-center shadow-sm"
           >
             <Text className="font-poppins-semibold text-[#214332] text-[15px] tracking-wide">

@@ -14,12 +14,14 @@ import { useAuth, useSignIn, useSSO } from "@clerk/expo";
 import { images } from "@/constants/images";
 import { SocialAuthButton, SocialProvider } from "@/components/auth/SocialAuthButton";
 import { VerificationModal } from "@/components/auth/VerificationModal";
+import { useUserProfile } from "@/store/userProfileStore";
 
 export default function SignInScreen() {
   const router = useRouter();
   const { isLoaded } = useAuth();
   const { signIn } = useSignIn();
   const { startSSOFlow } = useSSO();
+  const { login } = useUserProfile();
 
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
@@ -70,8 +72,9 @@ export default function SignInScreen() {
       if (finalizeError) {
         throw new Error(finalizeError.message || "Failed to finalize session.");
       }
+      await login(email.trim(), email.split("@")[0]);
       setShowVerificationModal(false);
-      router.replace("/connect-device");
+      router.replace("/(tabs)");
     } else {
       throw new Error("Verification incomplete. Please check the code and try again.");
     }
@@ -98,7 +101,7 @@ export default function SignInScreen() {
 
       if (createdSessionId && setSSOActive) {
         await setSSOActive({ session: createdSessionId });
-        router.replace("/connect-device");
+        router.replace("/(tabs)");
       }
     } catch (err: unknown) {
       const clerkError = err as { errors?: { message?: string }[]; message?: string };
@@ -228,7 +231,10 @@ export default function SignInScreen() {
           {/* Continue Offline (BLE Direct) */}
           <TouchableOpacity
             activeOpacity={0.8}
-            onPress={() => router.replace("/(tabs)")}
+            onPress={async () => {
+              await login(email.trim() || undefined);
+              router.replace("/(tabs)");
+            }}
             className="w-full py-3.5 px-6 -mt-2 mb-5 border border-[#214332]/20 bg-[#F4F7F5] rounded-full flex-row items-center justify-center"
           >
             <Text className="font-poppins-semibold text-[#214332] text-[14px]">

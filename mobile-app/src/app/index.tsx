@@ -7,17 +7,15 @@ export default function Index() {
   const { isLoaded, isSignedIn } = useAuth();
   const { profile } = useUserProfile();
 
+  // If locally logged in OR signed in via Clerk, go directly to Dashboard
+  if (profile.isLoggedIn || isSignedIn) {
+    return <Redirect href={"/(tabs)" as any} />;
+  }
+
   if (!isLoaded) {
     return null;
   }
 
-  if (!isSignedIn) {
-    return <Redirect href="/onboarding" />;
-  }
-
-  if (!profile.isCompleted) {
-    return <Redirect href="/onboarding-health" />;
-  }
-
-  return <Redirect href={"/(tabs)" as any} />;
+  return <Redirect href="/onboarding" />;
 }
+

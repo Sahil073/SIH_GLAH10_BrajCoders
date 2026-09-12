@@ -10,6 +10,7 @@ import { processSensorTick, resetAIEngine } from "../../ai-engine";
 import type { SensorTickInput, SanjeevniRiskOutput } from "../../ai-engine/types";
 import { setAiOutput, INITIAL_AI_STATE } from "../store/aiStore";
 import { safeInsertReading, safeInsertAlert } from "../database";
+import { getActiveUserId } from "../store/userProfileStore";
 
 /**
  * Configuration for the AI Ingestion Bridge
@@ -185,28 +186,30 @@ class AIBridgeService {
    * Persists health readings to the local SQLite database.
    */
   private logTelemetryToDb(output: SanjeevniRiskOutput): void {
+    const uid = getActiveUserId();
+
     if (output.heartRate && output.heartRate > 30 && output.heartRate < 240) {
-      safeInsertReading("HR", Math.round(output.heartRate));
+      safeInsertReading("HR", Math.round(output.heartRate), "garment", uid);
     }
 
     if (output.environment.temperature && output.environment.temperature > 0) {
-      safeInsertReading("TEMP", Number(output.environment.temperature.toFixed(1)));
+      safeInsertReading("TEMP", Number(output.environment.temperature.toFixed(1)), "garment", uid);
     }
 
     if (output.environment.humidity && output.environment.humidity > 0) {
-      safeInsertReading("HUMIDITY", Number(output.environment.humidity.toFixed(1)));
+      safeInsertReading("HUMIDITY", Number(output.environment.humidity.toFixed(1)), "garment", uid);
     }
 
     if (output.environment.aqi && output.environment.aqi > 0) {
-      safeInsertReading("AQI", Math.round(output.environment.aqi));
+      safeInsertReading("AQI", Math.round(output.environment.aqi), "garment", uid);
     }
 
     if (output.hrv) {
       if (output.hrv.rmssd != null && output.hrv.rmssd > 0) {
-        safeInsertReading("HRV_RMSSD", Number(output.hrv.rmssd.toFixed(2)));
+        safeInsertReading("HRV_RMSSD", Number(output.hrv.rmssd.toFixed(2)), "garment", uid);
       }
       if (output.hrv.sdnn != null && output.hrv.sdnn > 0) {
-        safeInsertReading("HRV_SDNN", Number(output.hrv.sdnn.toFixed(2)));
+        safeInsertReading("HRV_SDNN", Number(output.hrv.sdnn.toFixed(2)), "garment", uid);
       }
     }
   }
@@ -215,6 +218,7 @@ class AIBridgeService {
    * Checks for critical risk conditions and logs alerts to SQLite.
    */
   private evaluateAlertTriggers(output: SanjeevniRiskOutput, now: number): void {
+    const uid = getActiveUserId();
     const shouldFireAlert = (category: string) => {
       const last = this.lastAlertTimes[category] || 0;
       if (now - last >= ALERT_COOLDOWN_MS) {
@@ -229,7 +233,8 @@ class AIBridgeService {
       safeInsertAlert(
         "CARDIAC",
         "CRITICAL",
-        "Emergency SOS recommended: Sustained critical risk detected. Immediate attention requested."
+        "Emergency SOS recommended: Sustained critical risk detected. Immediate attention requested.",
+        uid
       );
     }
 
@@ -238,7 +243,8 @@ class AIBridgeService {
       safeInsertAlert(
         "FALL",
         "CRITICAL",
-        `Fall event detected (Confidence: ${(output.risks.fall.confidence * 100).toFixed(0)}%). Check worker status.`
+        `Fall event detected (Confidence: ${(output.risks.fall.confidence * 100).toFixed(0)}%). Check worker status.`,
+        uid
       );
     }
 
@@ -247,7 +253,8 @@ class AIBridgeService {
       safeInsertAlert(
         "HEAT",
         "HIGH",
-        `Extreme Heat Index detected (${output.environment.heatIndex?.toFixed(1) ?? "39"}°C). High risk of heat illness. Seek shade and hydrate.`
+        `Extreme Heat Index detected (${output.environment.heatIndex?.toFixed(1) ?? "39"}°C). High risk of heat illness. Seek shade and hydrate.`,
+        uid
       );
     }
 
@@ -256,7 +263,8 @@ class AIBridgeService {
       safeInsertAlert(
         "CARDIAC",
         "HIGH",
-        `Cardiac anomaly detected (HR: ${output.heartRate?.toFixed(0) ?? "abnormal"} BPM). Worker advised to rest.`
+        `Cardiac anomaly detected (HR: ${output.heartRate?.toFixed(0) ?? "abnormal"} BPM). Worker advised to rest.`,
+        uid
       );
     }
   }
