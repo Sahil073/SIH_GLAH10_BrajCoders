@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
 import { useRouter } from "expo-router";
 import { LockIcon } from "@/components/common/AppIcons";
+import { useLanguage } from "@/i18n/languages";
 
 export type TrafficLightStatus = "green" | "yellow" | "red";
 
@@ -20,33 +21,27 @@ const STATUS_CONFIG = {
     bgSoft: "#EBF7EE",
     bgCard: "#F0FDF4",
     borderColor: "#BBF7D0",
-    glowColor: "rgba(22, 163, 74, 0.15)",
-    label: "ALL NORMAL",
     badgeBg: "#DCFCE7",
-    defaultSentence: "You’re doing fine. Stay hydrated, it’s a hot afternoon.",
-    subtext: "Heart rhythm, skin temperature, and oxygen saturation are steady.",
+    badgeBorder: "#86EFAC",
+    label: "NORMAL",
   },
   yellow: {
     color: "#D97706",
     bgSoft: "#FFFBEB",
     bgCard: "#FEFCE8",
     borderColor: "#FDE68A",
-    glowColor: "rgba(217, 119, 6, 0.15)",
-    label: "CAUTION DETECTED",
     badgeBg: "#FEF3C7",
-    defaultSentence: "Your heart rate is a bit high for resting. Sit somewhere shaded for a few minutes.",
-    subtext: "Elevated pulse or thermal index detected. Take a brief resting pause.",
+    badgeBorder: "#FCD34D",
+    label: "CAUTION",
   },
   red: {
     color: "#DC2626",
     bgSoft: "#FEF2F2",
     bgCard: "#FFF1F2",
     borderColor: "#FECDD3",
-    glowColor: "rgba(220, 38, 38, 0.15)",
-    label: "NEEDS ATTENTION",
     badgeBg: "#FEE2E2",
-    defaultSentence: "This doesn’t look normal. Please sit down and consider calling for help.",
-    subtext: "Arrhythmia anomaly or impact shock recorded. Check on user immediately.",
+    badgeBorder: "#FCA5A5",
+    label: "RISK",
   },
 };
 
@@ -55,16 +50,31 @@ export function StatusOrb({
   customMessage,
   onPress,
   onStatusChange,
-  showSimControls = true,
+  showSimControls = false,
 }: StatusOrbProps) {
   const router = useRouter();
-  const config = STATUS_CONFIG[status];
-  const headline = customMessage || config.defaultSentence;
+  const { t } = useLanguage();
+  const config = STATUS_CONFIG[status] || STATUS_CONFIG.green;
+
+  const localizedBadge =
+    status === "green"
+      ? t("statusNormal")
+      : status === "yellow"
+      ? t("statusWarning")
+      : t("statusCritical");
+
+  const localizedSub =
+    customMessage ||
+    (status === "green"
+      ? t("statusNormalSub")
+      : status === "yellow"
+      ? t("statusWarningSub")
+      : t("statusCriticalSub"));
 
   return (
     <View style={styles.outerContainer}>
       <TouchableOpacity
-        activeOpacity={0.9}
+        activeOpacity={0.88}
         onPress={onPress}
         style={[
           styles.mainCard,
@@ -74,21 +84,24 @@ export function StatusOrb({
           },
         ]}
       >
-        {/* Top Tag & Privacy Badge Row */}
-        <View style={styles.topTagRow}>
+        {/* Header: Status Pill & On-device Privacy Tag */}
+        <View style={styles.topRow}>
           <View
             style={[
-              styles.trafficBadge,
-              { backgroundColor: config.badgeBg, borderColor: config.borderColor },
+              styles.statusPill,
+              {
+                backgroundColor: config.badgeBg,
+                borderColor: config.badgeBorder,
+              },
             ]}
           >
             <View style={[styles.statusDot, { backgroundColor: config.color }]} />
-            <Text style={[styles.statusBadgeText, { color: config.color }]}>
-              {config.label}
+            <Text style={[styles.statusPillText, { color: config.color }]}>
+              {localizedBadge.toUpperCase()}
             </Text>
           </View>
 
-          {/* Persistent On-device Privacy Badge (AGENTS.md §4.2) */}
+          {/* Persistent On-device Privacy Tag (AGENTS.md §4.2) */}
           <TouchableOpacity
             activeOpacity={0.75}
             onPress={() => router.push("/trust-privacy" as any)}
@@ -101,67 +114,86 @@ export function StatusOrb({
           </TouchableOpacity>
         </View>
 
-        {/* Central Orb & Icon Visual */}
-        <View style={styles.orbCenterSection}>
+        {/* Focused Single-State Body: Clear Icon + State Title & Subtitle */}
+        <View style={styles.bodyRow}>
           <View
             style={[
-              styles.orbOuterGlow,
-              { backgroundColor: config.glowColor, borderColor: config.borderColor },
+              styles.iconCircle,
+              {
+                backgroundColor: config.badgeBg,
+                borderColor: config.borderColor,
+              },
             ]}
           >
-            <View style={[styles.orbInnerCircle, { backgroundColor: config.color }]}>
-              {status === "green" && (
-                <Svg width="34" height="34" viewBox="0 0 24 24" fill="none">
-                  <Path
-                    d="M12 2L4 5.5V11.5C4 16.5 7.5 20.8 12 22C16.5 20.8 20 16.5 20 11.5V5.5L12 2Z"
-                    fill="#DCFCE7"
-                  />
-                  <Path
-                    d="M9 12L11 14L15 10"
-                    stroke="#15803D"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </Svg>
-              )}
+            {status === "green" && (
+              <Svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+                <Path
+                  d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"
+                  fill="#16A34A"
+                />
+                <Path
+                  d="m9 12 2 2 4-4"
+                  stroke="#FFFFFF"
+                  strokeWidth="2.4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </Svg>
+            )}
 
-              {status === "yellow" && (
-                <Svg width="34" height="34" viewBox="0 0 24 24" fill="none">
-                  <Path
-                    d="M12 9V13M12 17H12.01M10.29 3.86L1.82 18C1.64 18.3 1.55 18.65 1.55 19C1.55 19.35 1.64 19.7 1.82 20C2 20.3 2.26 20.56 2.57 20.73C2.88 20.9 3.23 21 3.59 21H20.41C20.77 21 21.12 20.9 21.43 20.73C21.74 20.56 22 20.3 22.18 20C22.36 19.7 22.45 19.35 22.45 19C22.45 18.65 22.36 18.3 22.18 18L13.71 3.86C13.53 3.55 13.27 3.3 12.96 3.13C12.65 2.96 12.3 2.87 11.94 2.87C11.58 2.87 11.23 2.96 10.92 3.13C10.61 3.3 10.35 3.55 10.17 3.86H10.29Z"
-                    stroke="#FFFFFF"
-                    strokeWidth="2.2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </Svg>
-              )}
+            {status === "yellow" && (
+              <Svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+                <Path
+                  d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
+                  fill="#D97706"
+                />
+                <Path
+                  d="M12 9v4m0 4h.01"
+                  stroke="#FFFFFF"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                />
+              </Svg>
+            )}
 
-              {status === "red" && (
-                <Svg width="34" height="34" viewBox="0 0 24 24" fill="none">
-                  <Circle cx="12" cy="12" r="10" fill="#FEE2E2" />
-                  <Path
-                    d="M12 7V13M12 16H12.01"
-                    stroke="#DC2626"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                  />
-                </Svg>
-              )}
-            </View>
+            {status === "red" && (
+              <Svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+                <Circle cx="12" cy="12" r="10" fill="#DC2626" />
+                <Path
+                  d="M12 7v6m0 3h.01"
+                  stroke="#FFFFFF"
+                  strokeWidth="2.4"
+                  strokeLinecap="round"
+                />
+              </Svg>
+            )}
+          </View>
+
+          <View style={styles.textColumn}>
+            <Text style={[styles.statusTitle, { color: config.color }]}>
+              {localizedBadge}
+            </Text>
+            <Text style={styles.statusSubtitle} numberOfLines={2}>
+              {localizedSub}
+            </Text>
           </View>
         </View>
 
-        {/* Plain-Language Status Sentence (AGENTS.md §4.2) */}
-        <Text style={[styles.statusSentence, { color: config.color }]}>
-          “{headline}”
-        </Text>
-
-        <Text style={styles.statusSubtext}>{config.subtext}</Text>
+        {/* Subtle Bottom State Level Indicator */}
+        <View style={styles.indicatorTrack}>
+          <View
+            style={[
+              styles.indicatorFill,
+              {
+                backgroundColor: config.color,
+                width: status === "green" ? "33%" : status === "yellow" ? "66%" : "100%",
+              },
+            ]}
+          />
+        </View>
       </TouchableOpacity>
 
-      {/* Demo Selector Pills for Judges & Mentors */}
+      {/* Optional demo controls if explicitly requested */}
       {showSimControls && onStatusChange && (
         <View style={styles.simRow}>
           <Text style={styles.simLabel}>Demo State:</Text>
@@ -205,106 +237,108 @@ export function StatusOrb({
 const styles = StyleSheet.create({
   outerContainer: {
     width: "100%",
-    marginBottom: 18,
+    marginBottom: 16,
   },
   mainCard: {
-    borderRadius: 28,
+    borderRadius: 20,
     borderWidth: 1.5,
-    padding: 20,
-    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 14,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  topTagRow: {
+  topRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     width: "100%",
     marginBottom: 12,
   },
-  trafficBadge: {
+  statusPill: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 4.5,
+    paddingHorizontal: 10,
+    paddingVertical: 3.5,
     borderRadius: 999,
     borderWidth: 1,
   },
   statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
+    width: 6.5,
+    height: 6.5,
+    borderRadius: 3.5,
     marginRight: 6,
   },
-  statusBadgeText: {
+  statusPillText: {
     fontFamily: "Poppins-Bold",
-    fontSize: 11,
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
+    fontSize: 10.5,
+    letterSpacing: 0.6,
   },
   privacyBadge: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#FFFFFF",
-    paddingHorizontal: 10,
-    paddingVertical: 3.5,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: "#E5E1D8",
-  },
-  privacyLock: {
-    fontSize: 10,
-    marginRight: 4,
   },
   privacyText: {
     fontFamily: "Poppins-Medium",
     fontSize: 10.5,
     color: "#55695E",
   },
-  orbCenterSection: {
+  bodyRow: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    marginVertical: 10,
+    width: "100%",
+    marginBottom: 10,
   },
-  orbOuterGlow: {
-    width: 86,
-    height: 86,
-    borderRadius: 43,
-    borderWidth: 2,
+  iconCircle: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    borderWidth: 1.5,
     alignItems: "center",
     justifyContent: "center",
-  },
-  orbInnerCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    alignItems: "center",
-    justifyContent: "center",
+    marginRight: 12,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.06,
     shadowRadius: 4,
-    elevation: 3,
+    elevation: 2,
   },
-  statusSentence: {
+  textColumn: {
+    flex: 1,
+    justifyContent: "center",
+  },
+  statusTitle: {
     fontFamily: "Poppins-Bold",
-    fontSize: 18,
-    lineHeight: 25,
-    textAlign: "center",
-    marginTop: 4,
-    paddingHorizontal: 8,
+    fontSize: 17,
+    letterSpacing: -0.2,
+    lineHeight: 22,
+    marginBottom: 2,
   },
-  statusSubtext: {
+  statusSubtitle: {
     fontFamily: "Poppins-Regular",
     fontSize: 12.5,
-    color: "#55695E",
-    textAlign: "center",
-    marginTop: 4,
-    lineHeight: 18,
-    paddingHorizontal: 12,
+    color: "#475569",
+    lineHeight: 17,
+  },
+  indicatorTrack: {
+    width: "100%",
+    height: 3.5,
+    borderRadius: 2,
+    backgroundColor: "rgba(0, 0, 0, 0.05)",
+    overflow: "hidden",
+  },
+  indicatorFill: {
+    height: "100%",
+    borderRadius: 2,
   },
   simRow: {
     flexDirection: "row",

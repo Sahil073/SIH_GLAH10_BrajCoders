@@ -2,10 +2,11 @@ import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import Svg, { Path, Circle } from "react-native-svg";
 import { MetricType } from "@/types/dashboard";
+import { useLanguage } from "@/i18n/languages";
 
 interface LiveVitalsGridProps {
   heartRate: number;
-  spo2: number;
+  moisture: number;
   temperature: number;
   aqi: number;
   isConnected: boolean;
@@ -14,24 +15,25 @@ interface LiveVitalsGridProps {
 
 export function LiveVitalsGrid({
   heartRate,
-  spo2,
+  moisture,
   temperature,
   aqi,
   isConnected,
   onSelectMetric,
 }: LiveVitalsGridProps) {
+  const { t } = useLanguage();
   const hrVal = heartRate > 0 ? `${Math.round(heartRate)}` : "--";
-  const spo2Val = spo2 > 0 ? `${Math.round(spo2)}%` : "--";
+  const moistVal = moisture > 0 ? `${Math.round(moisture)}%` : "--";
   const tempVal = temperature > 0 ? `${temperature.toFixed(1)}°C` : "--";
   const aqiVal = aqi > 0 ? `${Math.round(aqi)}` : "--";
 
   const vitals = [
     {
       key: "heart_rate" as MetricType,
-      title: "Heart Rate",
+      title: t("heartRate"),
       value: hrVal,
-      unit: "BPM",
-      status: heartRate > 100 ? "High" : heartRate >= 55 ? "Normal" : "Resting",
+      unit: t("bpm"),
+      status: heartRate > 100 ? t("high") : heartRate >= 55 ? t("normal") : t("resting"),
       statusColor: heartRate > 100 ? "#DC2626" : "#16A34A",
       bgColor: "#FFF5F5",
       borderColor: "#FED7D7",
@@ -46,30 +48,30 @@ export function LiveVitalsGrid({
       ),
     },
     {
-      key: "spo2" as MetricType,
-      title: "Blood Oxygen",
-      value: spo2Val,
-      unit: "SpO2",
-      status: spo2 >= 95 ? "Optimal" : spo2 > 0 ? "Check" : "Normal",
-      statusColor: spo2 < 95 && spo2 > 0 ? "#D97706" : "#0284C7",
-      bgColor: "#F0F9FF",
-      borderColor: "#BAE6FD",
-      iconColor: "#0284C7",
+      key: "moisture" as MetricType,
+      title: t("skinMoisture"),
+      value: moistVal,
+      unit: "%",
+      status: moisture > 75 ? t("high") : moisture >= 25 ? t("optimal") : moisture > 0 ? t("dry") : t("normal"),
+      statusColor: moisture > 75 ? "#D97706" : moisture >= 25 ? "#0D9488" : "#64748B",
+      bgColor: "#F0FDFA",
+      borderColor: "#99F6E4",
+      iconColor: "#0D9488",
       renderIcon: () => (
         <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
           <Path
             d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"
-            fill="#0284C7"
+            fill="#0D9488"
           />
         </Svg>
       ),
     },
     {
       key: "temperature" as MetricType,
-      title: "Temperature",
+      title: t("temperature"),
       value: tempVal,
-      unit: "Skin",
-      status: temperature > 38 ? "Fever" : "Comfortable",
+      unit: t("skin"),
+      status: temperature > 38 ? t("fever") : t("comfortable"),
       statusColor: temperature > 38 ? "#DC2626" : "#D97706",
       bgColor: "#FFFBEB",
       borderColor: "#FDE68A",
@@ -85,10 +87,10 @@ export function LiveVitalsGrid({
     },
     {
       key: "aqi" as MetricType,
-      title: "Air Quality",
+      title: t("airQuality"),
       value: aqiVal,
       unit: "AQI",
-      status: aqi <= 50 ? "Good" : aqi <= 100 ? "Moderate" : "Poor",
+      status: aqi <= 50 ? t("optimal") : aqi <= 100 ? t("normal") : t("high"),
       statusColor: aqi > 100 ? "#DC2626" : "#059669",
       bgColor: "#ECFDF5",
       borderColor: "#A7F3D0",

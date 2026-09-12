@@ -344,6 +344,7 @@ export async function insertReading(
   if (sensorType === 'TEMP' && (value < -10 || value > 60)) return;
   if (sensorType === 'AQI' && (value < 0 || value > 1000)) return;
   if (sensorType === 'HUMIDITY' && (value < 0 || value > 100)) return;
+  if (sensorType === 'MOISTURE' && (value < 0 || value > 100)) return;
   if (sensorType === 'STEPS' && (value < 0 || value > 100000)) return;
   if (sensorType === 'HRV_SDNN' && (value < 0 || value > 500)) return;
   if (sensorType === 'HRV_RMSSD' && (value < 0 || value > 500)) return;
@@ -472,7 +473,7 @@ export async function getAllSensorAverages(userId?: string): Promise<{
   const hrStat = await getSensorStats('HR', uid);
   const tempStat = await getSensorStats('TEMP', uid);
   const aqiStat = await getSensorStats('AQI', uid);
-  const humStat = await getSensorStats('HUMIDITY', uid);
+  const humStat = (await getSensorStats('HUMIDITY', uid)) || (await getSensorStats('MOISTURE', uid));
   const stepRow = await db.getFirstAsync<{ max_steps: number | null }>(
     'SELECT MAX(value) as max_steps FROM readings WHERE sensor_type = ? AND user_id = ?',
     'STEPS',
@@ -502,12 +503,15 @@ export async function getSensorHistory(
   const db = await getDb();
   const uid = normalizeUserId(userId);
 
-  const rows = await db.getAllAsync<{ timestamp: string; value: number }>(
-    'SELECT timestamp, value FROM readings WHERE sensor_type = ? AND user_id = ? ORDER BY timestamp DESC LIMIT ?',
-    sensorType,
-    uid,
-    limit
-  );
+  let sql = 'SELECT timestamp, value FROM readings WHERE sensor_type = ? AND user_id = ? ORDER BY timestamp DESC LIMIT ?';
+  let params: any[] = [sensorType, uid, limit];
+
+  if (sensorType === 'HUMIDITY' || sensorType === 'MOISTURE') {
+    sql = "SELECT timestamp, value FROM readings WHERE (sensor_type = 'HUMIDITY' OR sensor_type = 'MOISTURE') AND user_id = ? ORDER BY timestamp DESC LIMIT ?";
+    params = [uid, limit];
+  }
+
+  const rows = await db.getAllAsync<{ timestamp: string; value: number }>(sql, ...params);
   return rows.reverse();
 }
 

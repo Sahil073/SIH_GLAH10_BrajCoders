@@ -54,7 +54,7 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
-    "test": "npx tsx databaseConnections/__tests__/databaseSchema.test.ts && npx tsx ai-engine/__tests__/aiPipeline.test.ts && npx tsx __tests__/endToEndIntegration.test.ts"
+    "test": "npx tsx databaseConnections/__tests__/databaseSchema.test.ts && npx tsx ai-engine/__tests__/aiPipeline.test.ts && npx tsx __tests__/endToEndIntegration.test.ts && npx tsx __tests__/smsDispatch.test.ts && npx tsx __tests__/liveDataStorage.test.ts && npx tsx __tests__/alertEngine.test.ts"
   },
   "private": true
 }

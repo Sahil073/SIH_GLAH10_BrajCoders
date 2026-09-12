@@ -11,6 +11,8 @@ import {
 import { fetchAlerts, ackAlert, removeAlert, removeAllAlerts } from "@/database";
 import { useUserProfile } from "@/store/userProfileStore";
 import { useTheme } from "@/store/themeStore";
+import { useLanguage } from "@/i18n/languages";
+import { markAlertsAsViewed } from "@/store/notificationStore";
 import {
   CriticalShieldIcon,
   WarningTriangleIcon,
@@ -71,9 +73,26 @@ function getAlertIcon(iconType: AlertIconType, severity: AlertSeverity, size = 1
 export default function AlertsScreen() {
   const { activeUserId } = useUserProfile();
   const { colors, isDark } = useTheme();
+  const { t } = useLanguage();
 
   const [alerts, setAlerts] = useState<AlertRecord[]>([]);
   const [refreshing, setRefreshing] = useState<boolean>(false);
+
+  const getLocalizedCategoryTitle = (cat: string) => {
+    switch (cat) {
+      case "HEAT":
+        return t("alertHeat");
+      case "RESPIRATORY":
+      case "AQI":
+        return t("alertRespiratory");
+      case "FALL":
+        return t("alertFall");
+      case "BATTERY":
+        return t("alertBattery");
+      default:
+        return t("alertVitals");
+    }
+  };
 
   const loadAlerts = useCallback(async () => {
     try {
@@ -123,6 +142,7 @@ export default function AlertsScreen() {
   }, [activeUserId]);
 
   useEffect(() => {
+    markAlertsAsViewed();
     void loadAlerts();
     const interval = setInterval(loadAlerts, 3000);
     return () => clearInterval(interval);
@@ -148,12 +168,12 @@ export default function AlertsScreen() {
 
   const handleClearAll = async () => {
     Alert.alert(
-      "Clear All Alerts",
-      `Are you sure you want to dismiss all alerts for ${activeUserId}?`,
+      t("clearAllAlertsTitle"),
+      `${t("clearAllAlertsMsg")} (${activeUserId === "offline_local" ? t("phoneOfflineAlerts") : activeUserId})`,
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t("cancel"), style: "cancel" },
         {
-          text: "Clear All",
+          text: t("clearAll"),
           style: "destructive",
           onPress: async () => {
             await removeAllAlerts(activeUserId);
@@ -188,15 +208,15 @@ export default function AlertsScreen() {
               style={{ color: colors.textPrimary }}
               className="font-poppins-bold text-[28px]"
             >
-              Alerts
+              {t("alertsTitle")}
             </Text>
             <Text
               style={{ color: colors.textSecondary }}
               className="font-poppins-regular text-xs mt-0.5"
             >
               {activeUserId === "offline_local"
-                ? "Phone offline alerts"
-                : `Alerts for ${activeUserId}`}
+                ? t("phoneOfflineAlerts")
+                : `${t("alertsForUser")} ${activeUserId}`}
             </Text>
           </View>
 
@@ -207,7 +227,7 @@ export default function AlertsScreen() {
               className="px-3 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900"
             >
               <Text className="font-poppins-semibold text-xs text-rose-600 dark:text-rose-400">
-                Clear All
+                {t("clearAll")}
               </Text>
             </TouchableOpacity>
           )}
@@ -229,13 +249,13 @@ export default function AlertsScreen() {
               style={{ color: colors.textPrimary }}
               className="font-poppins-medium text-sm"
             >
-              No Active Alerts
+              {t("noActiveAlerts")}
             </Text>
             <Text
               style={{ color: colors.textSecondary }}
               className="font-poppins-regular text-xs mt-1 text-center"
             >
-              All health and environmental vitals are within safe thresholds.
+              {t("noAlertsSub")}
             </Text>
           </View>
         ) : (
@@ -278,7 +298,7 @@ export default function AlertsScreen() {
                           style={{ color: colors.textPrimary }}
                           className="font-poppins-semibold text-sm"
                         >
-                          {alert.title}
+                          {getLocalizedCategoryTitle(alert.title)}
                         </Text>
                         {!alert.isRead && (
                           <View className="w-1.5 h-1.5 rounded-full bg-rose-500 ml-1.5" />
@@ -317,7 +337,7 @@ export default function AlertsScreen() {
                         style={{ color: colors.textSecondary }}
                         className="font-poppins-medium text-[10px]"
                       >
-                        Dismiss
+                        {t("dismiss")}
                       </Text>
                     </TouchableOpacity>
                   </View>

@@ -13,6 +13,7 @@ const publishableKey =
 
 import { initDatabase } from "@/database";
 import { aiBridge } from "@/services/aiBridge";
+import { InAppNotificationBanner } from "@/components/common/InAppNotificationBanner";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -58,6 +59,7 @@ export default function RootLayout() {
         <Stack.Screen name="asha-mode" />
         <Stack.Screen name="(tabs)" />
       </Stack>
+      <InAppNotificationBanner />
     </ClerkProvider>
   );
 }

@@ -11,6 +11,7 @@ import type { SensorTickInput, SanjeevniRiskOutput } from "../../ai-engine/types
 import { setAiOutput, INITIAL_AI_STATE } from "../store/aiStore";
 import { safeInsertReading, safeInsertAlert } from "../database";
 import { getActiveUserId } from "../store/userProfileStore";
+import { evaluateAllSixParameters } from "./alertEngine";
 
 /**
  * Configuration for the AI Ingestion Bridge
@@ -28,6 +29,7 @@ class AIBridgeService {
     humidity: null,
   };
   private lastMq135: number | null = null;
+  private lastSoilRaw: number | null = null;
   private lastProcessTime = 0;
   private lastDbLogTime = 0;
   private lastAlertTimes: Record<string, number> = {};
@@ -140,6 +142,13 @@ class AIBridgeService {
         }
         break;
       }
+
+      case SensorId.SOIL_MOISTURE: {
+        if (packet.data.raw > 0) {
+          this.lastSoilRaw = packet.data.raw;
+        }
+        break;
+      }
     }
 
     // Trigger AI evaluation if process interval has elapsed
@@ -215,8 +224,16 @@ class AIBridgeService {
       safeInsertReading("TEMP", Number(output.environment.temperature.toFixed(1)), "garment", uid);
     }
 
-    if (output.environment.humidity != null && output.environment.humidity > 0) {
-      safeInsertReading("HUMIDITY", Number(output.environment.humidity.toFixed(1)), "garment", uid);
+    const moistVal =
+      this.lastSoilRaw != null && this.lastSoilRaw > 0
+        ? Math.max(0, Math.min(100, Math.round((1 - this.lastSoilRaw / 4095) * 100)))
+        : output.environment.humidity != null && output.environment.humidity > 0
+        ? Number(output.environment.humidity.toFixed(1))
+        : null;
+
+    if (moistVal != null && moistVal > 0) {
+      safeInsertReading("HUMIDITY", moistVal, "garment", uid);
+      safeInsertReading("MOISTURE", moistVal, "garment", uid);
     }
 
     if (output.environment.aqi != null && output.environment.aqi > 0) {
@@ -238,54 +255,23 @@ class AIBridgeService {
    */
   private evaluateAlertTriggers(output: SanjeevniRiskOutput, now: number): void {
     const uid = getActiveUserId();
-    const shouldFireAlert = (category: string) => {
-      const last = this.lastAlertTimes[category] || 0;
-      if (now - last >= ALERT_COOLDOWN_MS) {
-        this.lastAlertTimes[category] = now;
-        return true;
-      }
-      return false;
-    };
 
-    // SOS Recommended (verified fall or critical sustained cardiac risk)
-    if (output.sosRecommended && shouldFireAlert("SOS")) {
-      safeInsertAlert(
-        "CARDIAC",
-        "CRITICAL",
-        "Emergency SOS recommended: Sustained critical risk detected. Immediate attention requested.",
-        uid
-      );
-    }
+    const moistVal =
+      this.lastSoilRaw != null && this.lastSoilRaw > 0
+        ? Math.max(0, Math.min(100, Math.round((1 - this.lastSoilRaw / 4095) * 100)))
+        : output.environment.humidity ?? 0;
 
-    // Fall Detection
-    if (output.risks.fall.detected && shouldFireAlert("FALL")) {
-      safeInsertAlert(
-        "FALL",
-        "CRITICAL",
-        `Fall event detected (Confidence: ${(output.risks.fall.confidence * 100).toFixed(0)}%). Check worker status.`,
-        uid
-      );
-    }
-
-    // Heat Risk
-    if (output.risks.heat.level === "RISK" && shouldFireAlert("HEAT")) {
-      safeInsertAlert(
-        "HEAT",
-        "HIGH",
-        `Extreme Heat Index detected (${output.environment.heatIndex?.toFixed(1) ?? "39"}°C). High risk of heat illness. Seek shade and hydrate.`,
-        uid
-      );
-    }
-
-    // Cardiac Risk
-    if (output.risks.cardiac.level === "RISK" && shouldFireAlert("CARDIAC")) {
-      safeInsertAlert(
-        "CARDIAC",
-        "HIGH",
-        `Cardiac anomaly detected (HR: ${output.heartRate?.toFixed(0) ?? "abnormal"} BPM). Worker advised to rest.`,
-        uid
-      );
-    }
+    // Comprehensive evaluation of all 6 parameters -> on-device SQLite + In-App notification banner
+    void evaluateAllSixParameters({
+      heartRate: output.heartRate ?? 0,
+      temperature: output.environment.temperature ?? 0,
+      moisture: moistVal,
+      aqi: output.environment.aqi ?? 0,
+      heatIndex: output.environment.heatIndex ?? 0,
+      steps: 0,
+      fallDetected: Boolean(output.risks.fall.detected || output.sosRecommended),
+      userId: uid,
+    });
   }
 }
 

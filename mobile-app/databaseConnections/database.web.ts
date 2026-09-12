@@ -332,8 +332,15 @@ export async function getSensorHistory(
 ): Promise<{ timestamp: string; value: number }[]> {
   const uid = normalizeUserId(userId);
   const readings = getStorage<WebReading[]>("sanjeevni_web_readings", []);
+  const isMoist = sensorType === "HUMIDITY" || sensorType === "MOISTURE";
   const matched = readings
-    .filter((r) => r.user_id === uid && r.sensor_type === sensorType)
+    .filter(
+      (r) =>
+        r.user_id === uid &&
+        (isMoist
+          ? r.sensor_type === "HUMIDITY" || r.sensor_type === "MOISTURE"
+          : r.sensor_type === sensorType)
+    )
     .slice(-limit);
   return matched.map((r) => ({ timestamp: r.timestamp, value: r.value }));
 }

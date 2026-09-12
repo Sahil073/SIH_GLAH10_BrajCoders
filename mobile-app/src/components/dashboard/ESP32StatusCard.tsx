@@ -2,6 +2,8 @@ import React from "react";
 import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
 import { useBle } from "@/ble";
 import { useTheme } from "@/store/themeStore";
+import { BluetoothIcon } from "@/components/common/AppIcons";
+import { useLanguage } from "@/i18n/languages";
 
 interface ESP32StatusCardProps {
   hasHistoricalData?: boolean;
@@ -18,6 +20,7 @@ export function ESP32StatusCard({ hasHistoricalData = false }: ESP32StatusCardPr
   } = useBle();
 
   const { colors, isDark } = useTheme();
+  const { t } = useLanguage();
 
   const connectedDevice = discoveredDevices.find(
     (d) => d.id === connectedDeviceId
@@ -42,7 +45,7 @@ export function ESP32StatusCard({ hasHistoricalData = false }: ESP32StatusCardPr
         dotBg: "bg-emerald-500",
         pillBg: isDark ? "bg-emerald-950/60 border-emerald-800" : "bg-emerald-50 border-emerald-200",
         textColor: isDark ? "text-emerald-300" : "text-emerald-700",
-        label: "Connected",
+        label: t("connected"),
       };
     }
     if (isBusy) {
@@ -50,21 +53,21 @@ export function ESP32StatusCard({ hasHistoricalData = false }: ESP32StatusCardPr
         dotBg: "bg-amber-500",
         pillBg: isDark ? "bg-amber-950/60 border-amber-800" : "bg-amber-50 border-amber-200",
         textColor: isDark ? "text-amber-300" : "text-amber-700",
-        label: isScanning ? "Scanning..." : "Connecting...",
+        label: isScanning ? t("scanning") : t("connecting"),
       };
     }
     return {
       dotBg: "bg-rose-500",
       pillBg: isDark ? "bg-rose-950/60 border-rose-800" : "bg-rose-50 border-rose-200",
       textColor: isDark ? "text-rose-300" : "text-rose-700",
-      label: "Disconnected",
+      label: t("disconnected"),
     };
   };
 
   const badge = getStatusBadge();
 
   return (
-    <View className="px-6 mb-5">
+    <View className="mb-4">
       <View
         style={{
           backgroundColor: colors.cardBg,
@@ -80,47 +83,53 @@ export function ESP32StatusCard({ hasHistoricalData = false }: ESP32StatusCardPr
                 backgroundColor: isDark ? colors.backgroundSecondary : isConnected ? "#EBF5EE" : "#F4F1EA",
                 borderColor: colors.cardBorder,
               }}
-              className="w-11 h-11 rounded-2xl items-center justify-center mr-3 border"
+              className="w-11 h-11 rounded-2xl items-center justify-center mr-3 border shrink-0"
             >
               {isBusy ? (
                 <ActivityIndicator size="small" color="#D97706" />
               ) : (
-                <Text className="text-xl">
-                  {isConnected ? "📡" : "🔌"}
-                </Text>
+                <BluetoothIcon
+                  size={20}
+                  color={isConnected ? "#16A34A" : isDark ? "#9CA3AF" : "#6B7280"}
+                />
               )}
             </View>
 
-            <View className="flex-1">
-              <View className="flex-row items-center">
-                <Text
-                  style={{ color: colors.textPrimary }}
-                  className="font-poppins-bold text-[15px] leading-snug"
-                >
-                  {isConnected
-                    ? connectedDevice?.name || "ESP32 Sensor Hub"
-                    : "ESP32 Wearable"}
-                </Text>
+            <View className="flex-1 justify-center">
+              {/* Device Title */}
+              <Text
+                style={{ color: colors.textPrimary }}
+                className="font-poppins-bold text-[14.5px] leading-tight"
+                numberOfLines={1}
+              >
+                {isConnected
+                  ? connectedDevice?.name || t("esp32SensorHub")
+                  : t("esp32Wearable")}
+              </Text>
+
+              {/* Status Badge Pill & Telemetry Subtext */}
+              <View className="flex-row items-center mt-1">
                 <View
-                  className={`ml-2 px-2 py-0.5 rounded-full border flex-row items-center ${badge.pillBg}`}
+                  className={`px-2 py-0.5 rounded-full border flex-row items-center shrink-0 ${badge.pillBg}`}
                 >
                   <View className={`w-1.5 h-1.5 rounded-full mr-1 ${badge.dotBg}`} />
                   <Text className={`font-poppins-semibold text-[10px] ${badge.textColor}`}>
                     {badge.label}
                   </Text>
                 </View>
-              </View>
 
-              <Text
-                style={{ color: colors.textSecondary }}
-                className="font-poppins-regular text-[11.5px] mt-0.5"
-              >
-                {isConnected
-                  ? `Telemetry active • ${totalPackets} packets received`
-                  : hasHistoricalData
-                  ? "Offline • Showing SQLite past session averages"
-                  : "No Bluetooth connection • Real-time stream idle"}
-              </Text>
+                <Text
+                  style={{ color: colors.textSecondary }}
+                  className="font-poppins-regular text-[11px] ml-2 flex-1"
+                  numberOfLines={1}
+                >
+                  {isConnected
+                    ? `${t("telemetryActive")} • ${totalPackets} ${t("packets")}`
+                    : hasHistoricalData
+                    ? t("offlineMode")
+                    : t("streamIdle")}
+                </Text>
+              </View>
             </View>
           </View>
 
@@ -133,7 +142,7 @@ export function ESP32StatusCard({ hasHistoricalData = false }: ESP32StatusCardPr
               backgroundColor: isConnected ? colors.backgroundSecondary : colors.textPrimary,
               borderColor: colors.cardBorder,
             }}
-            className="px-3 py-2 rounded-xl border items-center justify-center"
+            className="px-3.5 py-2 rounded-xl border items-center justify-center shrink-0 min-w-[78px]"
           >
             <Text
               style={{
@@ -141,7 +150,11 @@ export function ESP32StatusCard({ hasHistoricalData = false }: ESP32StatusCardPr
               }}
               className="font-poppins-semibold text-[11px]"
             >
-              {isConnected ? "Disconnect" : isBusy ? "Connecting..." : "Connect"}
+              {isConnected
+                ? t("disconnect")
+                : isBusy
+                ? t("connecting")
+                : t("connect")}
             </Text>
           </TouchableOpacity>
         </View>

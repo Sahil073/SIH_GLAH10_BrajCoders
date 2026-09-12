@@ -98,6 +98,8 @@ function ProfileIcon({ color }: { color: string }) {
 }
 
 import { useTheme } from "@/store/themeStore";
+import { useLanguage } from "@/i18n/languages";
+import { useInAppNotification } from "@/store/notificationStore";
 
 interface AnimatedTabProps {
   label: string;
@@ -162,8 +164,10 @@ function TabItem({ label, isFocused, onPress, renderIcon }: AnimatedTabProps) {
 
 export function UniversalNavBar({ state, navigation }: BottomTabBarProps) {
   const { colors, isDark } = useTheme();
+  const { t } = useLanguage();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const { unreadCount } = useInAppNotification();
 
   // Floating SOS Pulse Animation
   const [sosScale] = useState(() => new Animated.Value(1));
@@ -336,7 +340,7 @@ export function UniversalNavBar({ state, navigation }: BottomTabBarProps) {
       <View className="flex-row items-center w-full h-[64px] px-2">
         {/* Left Side: Home */}
         <TabItem
-          label="Home"
+          label={t("tabHome")}
           isFocused={state.index === homeIndex}
           onPress={() => navigateTo("index", homeIndex)}
           renderIcon={(color) => <HomeIcon color={color} />}
@@ -344,10 +348,21 @@ export function UniversalNavBar({ state, navigation }: BottomTabBarProps) {
 
         {/* Left Side: Alerts */}
         <TabItem
-          label="Alerts"
+          label={t("tabAlerts")}
           isFocused={state.index === alertsIndex}
           onPress={() => navigateTo("alerts", alertsIndex)}
-          renderIcon={(color) => <AlertsIcon color={color} />}
+          renderIcon={(color) => (
+            <View className="relative items-center justify-center">
+              <AlertsIcon color={color} />
+              {unreadCount > 0 && (
+                <View className="absolute -top-1 -right-2.5 min-w-[15px] h-[15px] bg-rose-500 rounded-full items-center justify-center px-1 border border-white dark:border-neutral-900">
+                  <Text className="text-[8px] font-poppins-bold text-white leading-none">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
         />
 
         {/* Center Spacer for Elevated SOS Button */}
@@ -355,7 +370,7 @@ export function UniversalNavBar({ state, navigation }: BottomTabBarProps) {
 
         {/* Right Side: History */}
         <TabItem
-          label="History"
+          label={t("tabHistory")}
           isFocused={state.index === historyIndex}
           onPress={() => navigateTo("history", historyIndex)}
           renderIcon={(color) => <HistoryIcon color={color} />}
@@ -363,7 +378,7 @@ export function UniversalNavBar({ state, navigation }: BottomTabBarProps) {
 
         {/* Right Side: Profile */}
         <TabItem
-          label="Profile"
+          label={t("tabProfile")}
           isFocused={state.index === profileIndex}
           onPress={() => navigateTo("profile", profileIndex)}
           renderIcon={(color) => <ProfileIcon color={color} />}

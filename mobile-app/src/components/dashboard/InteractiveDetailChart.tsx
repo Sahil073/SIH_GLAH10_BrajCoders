@@ -7,6 +7,8 @@ import {
   LayoutChangeEvent,
 } from "react-native";
 import Svg, { Path, Circle, Rect, Defs, LinearGradient, Stop } from "react-native-svg";
+import { ChartLineIcon } from "@/components/common/AppIcons";
+import { useLanguage } from "@/i18n/languages";
 
 interface InteractiveDetailChartProps {
   values: number[];
@@ -50,6 +52,7 @@ export function InteractiveDetailChart({
   onPointSelected,
   height = 190,
 }: InteractiveDetailChartProps) {
+  const { t } = useLanguage();
   const [selectedIndex, setSelectedIndex] = useState<number>(
     Math.min(initialSelectedIndex, Math.max(0, values.length - 1))
   );
@@ -62,39 +65,65 @@ export function InteractiveDetailChart({
     }
   };
 
-  if (values.length < 2) {
+  if (values.length === 0) {
     return (
       <View
         onLayout={handleLayout}
         style={{ height, width: "100%" }}
         className="items-center justify-center rounded-2xl border border-dashed border-[#D1D5DB] bg-[#F9FAFB] px-4"
       >
-        <Text className="text-xl mb-1">📈</Text>
+        <View className="mb-1.5">
+          <ChartLineIcon size={24} color="#9CA3AF" />
+        </View>
         <Text className="font-poppins-semibold text-xs text-[#161616]">
-          Awaiting Sensor Data
+          {t("awaitingSensorData")}
         </Text>
         <Text className="font-poppins-regular text-[11px] text-[#86837C] text-center mt-0.5">
-          Connect the ESP32 wearable or wait for incoming packets to plot trend.
+          {t("connectWearableForTrend")}
         </Text>
       </View>
     );
   }
 
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
+  // Handle single-point series by duplicating to draw a clean steady line
+  const displayValues = values.length === 1 ? [values[0], values[0]] : values;
+  const displayTimestamps =
+    timestamps.length === 1 ? [timestamps[0], timestamps[0]] : timestamps;
+
+  // Extract numeric Y-axis bounds if present to anchor vertical scaling
+  const numericLabels = yAxisLabels
+    .map((l) => (typeof l === "number" ? l : parseFloat(String(l))))
+    .filter((n) => Number.isFinite(n));
+
+  let chartMin = Math.min(...displayValues);
+  let chartMax = Math.max(...displayValues);
+
+  if (numericLabels.length >= 2) {
+    const yAxisMin = Math.min(...numericLabels);
+    const yAxisMax = Math.max(...numericLabels);
+    chartMin = Math.min(chartMin, yAxisMin);
+    chartMax = Math.max(chartMax, yAxisMax);
+  }
+
+  // Minimum domain spread to prevent division by zero or compressed flatlines
+  if (chartMax - chartMin < 8) {
+    const center = (chartMax + chartMin) / 2;
+    chartMin = center - 8;
+    chartMax = center + 8;
+  }
+  const range = chartMax - chartMin;
 
   // Chart interior metrics
   const chartWidth = containerWidth;
-  const paddingX = 12;
-  const paddingY = 16;
+  const paddingX = 14;
+  const paddingY = 18;
   const usableWidth = chartWidth - paddingX * 2;
   const usableHeight = height - paddingY * 2;
 
   // Compute coordinate points
-  const points: { x: number; y: number }[] = values.map((val, idx) => {
-    const x = paddingX + (idx / Math.max(1, values.length - 1)) * usableWidth;
-    const norm = (val - min) / range;
+  const points: { x: number; y: number }[] = displayValues.map((val, idx) => {
+    const x = paddingX + (idx / Math.max(1, displayValues.length - 1)) * usableWidth;
+    const norm = (val - chartMin) / range;
     const y = height - paddingY - norm * usableHeight;
     return { x, y };
   });
@@ -108,8 +137,9 @@ export function InteractiveDetailChart({
     1
   )} ${height} Z`;
 
-  const activePoint = points[selectedIndex] ?? points[0];
-  const activeValue = values[selectedIndex] ?? values[0];
+  const clampedIndex = Math.min(selectedIndex, Math.max(0, displayValues.length - 1));
+  const activePoint = points[clampedIndex] ?? points[0];
+  const activeValue = displayValues[clampedIndex] ?? displayValues[0];
 
   // Handle touch scrubber
   const handleTouch = (e: GestureResponderEvent) => {
