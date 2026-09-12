@@ -62,6 +62,24 @@ export function InteractiveDetailChart({
     }
   };
 
+  if (values.length < 2) {
+    return (
+      <View
+        onLayout={handleLayout}
+        style={{ height, width: "100%" }}
+        className="items-center justify-center rounded-2xl border border-dashed border-[#D1D5DB] bg-[#F9FAFB] px-4"
+      >
+        <Text className="text-xl mb-1">📈</Text>
+        <Text className="font-poppins-semibold text-xs text-[#161616]">
+          Awaiting Sensor Data
+        </Text>
+        <Text className="font-poppins-regular text-[11px] text-[#86837C] text-center mt-0.5">
+          Connect the ESP32 wearable or wait for incoming packets to plot trend.
+        </Text>
+      </View>
+    );
+  }
+
   const min = Math.min(...values);
   const max = Math.max(...values);
   const range = max - min || 1;
