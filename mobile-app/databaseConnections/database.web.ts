@@ -47,6 +47,17 @@ interface WebAlert {
   acknowledged: number;
 }
 
+interface WebArchivedSummary {
+  id: number;
+  user_id: string;
+  sensor_type: string;
+  period_date: string;
+  avg_value: number;
+  min_value: number;
+  max_value: number;
+  sample_count: number;
+}
+
 let readingIdCounter = 1;
 let alertIdCounter = 1;
 
@@ -95,12 +106,123 @@ export async function initDb() {
   console.log("[Web Database] Initialized localStorage backed database for web browser.");
 }
 
-export async function pruneOldData(userId?: string) {
+export async function summarizeAndPruneOldData(
+  monthsCutoff: number = 6,
+  userId?: string
+): Promise<{ archivedRows: number; prunedRows: number }> {
   const uid = normalizeUserId(userId);
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const cutoff = new Date(Date.now() - monthsCutoff * 30 * 24 * 60 * 60 * 1000).toISOString();
   let readings = getStorage<WebReading[]>("sanjeevni_web_readings", []);
-  readings = readings.filter((r) => r.user_id !== uid || r.timestamp >= sevenDaysAgo);
+  let summaries = getStorage<WebArchivedSummary[]>("sanjeevni_web_summaries", []);
+
+  const toArchive = readings.filter(
+    (r) => (userId ? r.user_id === uid : true) && r.timestamp < cutoff
+  );
+
+  if (toArchive.length > 0) {
+    // Group by user_id + sensor_type + period_date (YYYY-MM-DD)
+    const groups: Record<
+      string,
+      { user_id: string; sensor_type: string; date: string; vals: number[] }
+    > = {};
+    for (const r of toArchive) {
+      const dateKey = `${r.user_id}_${r.sensor_type}_${r.timestamp.slice(0, 10)}`;
+      if (!groups[dateKey]) {
+        groups[dateKey] = {
+          user_id: r.user_id,
+          sensor_type: r.sensor_type,
+          date: r.timestamp.slice(0, 10),
+          vals: [],
+        };
+      }
+      groups[dateKey].vals.push(r.value);
+    }
+
+    let nextId = summaries.length > 0 ? Math.max(...summaries.map((s) => s.id)) + 1 : 1;
+    for (const g of Object.values(groups)) {
+      const sum = g.vals.reduce((a, b) => a + b, 0);
+      summaries.push({
+        id: nextId++,
+        user_id: g.user_id,
+        sensor_type: g.sensor_type,
+        period_date: g.date,
+        avg_value: Number((sum / g.vals.length).toFixed(1)),
+        min_value: Math.min(...g.vals),
+        max_value: Math.max(...g.vals),
+        sample_count: g.vals.length,
+      });
+    }
+
+    setStorage("sanjeevni_web_summaries", summaries);
+  }
+
+  // Remove pruned readings
+  readings = readings.filter(
+    (r) => !((userId ? r.user_id === uid : true) && r.timestamp < cutoff)
+  );
   setStorage("sanjeevni_web_readings", readings);
+
+  return { archivedRows: toArchive.length, prunedRows: toArchive.length };
+}
+
+export async function pruneOldData(userId?: string) {
+  await summarizeAndPruneOldData(6, userId);
+}
+
+export async function clearAllData(userId?: string): Promise<void> {
+  const uid = normalizeUserId(userId);
+  if (userId) {
+    let readings = getStorage<WebReading[]>("sanjeevni_web_readings", []);
+    readings = readings.filter((r) => r.user_id !== uid);
+    setStorage("sanjeevni_web_readings", readings);
+
+    let alerts = getStorage<WebAlert[]>("sanjeevni_web_alerts", []);
+    alerts = alerts.filter((a) => a.user_id !== uid);
+    setStorage("sanjeevni_web_alerts", alerts);
+
+    let summaries = getStorage<WebArchivedSummary[]>("sanjeevni_web_summaries", []);
+    summaries = summaries.filter((s) => s.user_id !== uid);
+    setStorage("sanjeevni_web_summaries", summaries);
+
+    if (typeof window !== "undefined" && window.localStorage) {
+      window.localStorage.removeItem(`sanjeevni_web_baseline_${uid}`);
+    }
+  } else {
+    setStorage("sanjeevni_web_readings", []);
+    setStorage("sanjeevni_web_alerts", []);
+    setStorage("sanjeevni_web_summaries", []);
+    if (typeof window !== "undefined" && window.localStorage) {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const k = window.localStorage.key(i);
+        if (k && k.startsWith("sanjeevni_web_baseline_")) keysToRemove.push(k);
+      }
+      keysToRemove.forEach((k) => window.localStorage.removeItem(k));
+    }
+  }
+}
+
+export async function getStorageStats(userId?: string): Promise<{
+  readingsCount: number;
+  alertsCount: number;
+  summariesCount: number;
+}> {
+  const uid = normalizeUserId(userId);
+  const readings = getStorage<WebReading[]>("sanjeevni_web_readings", []);
+  const alerts = getStorage<WebAlert[]>("sanjeevni_web_alerts", []);
+  const summaries = getStorage<WebArchivedSummary[]>("sanjeevni_web_summaries", []);
+
+  const readingsCount = userId
+    ? readings.filter((r) => r.user_id === uid).length
+    : readings.length;
+  const alertsCount = userId
+    ? alerts.filter((a) => a.user_id === uid).length
+    : alerts.length;
+  const summariesCount = userId
+    ? summaries.filter((s) => s.user_id === uid).length
+    : summaries.length;
+
+  return { readingsCount, alertsCount, summariesCount };
 }
 
 export async function insertReading(

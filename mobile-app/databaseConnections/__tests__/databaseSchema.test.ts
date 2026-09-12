@@ -467,7 +467,79 @@ console.log('Test 11: Multi-User Data Isolation (Schema v4 Partitioning)');
   console.log('  ✔ Complete Multi-User isolation (readings, alerts, profiles, baselines) verified');
 }
 
+// -----------------------------------------------------------------------------
+// Test 12: 6-Month Data Rollup, Pruning & Clean Slate Erasure Utility
+// -----------------------------------------------------------------------------
+console.log('\nTest 12: 6-Month Data Rollup, Pruning & Clean Slate Erasure Utility');
+{
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS archived_summaries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL DEFAULT 'offline_local',
+      sensor_type TEXT NOT NULL,
+      period_date TEXT NOT NULL,
+      avg_value REAL NOT NULL,
+      min_value REAL NOT NULL,
+      max_value REAL NOT NULL,
+      sample_count INTEGER NOT NULL
+    );
+  `);
+
+  const now = Date.now();
+  const sevenMonthsAgo = new Date(now - 210 * 24 * 60 * 60 * 1000).toISOString();
+  const yesterday = new Date(now - 24 * 60 * 60 * 1000).toISOString();
+
+  // Insert old readings (> 6 months ago) that should be rolled up
+  const insertReading = db.prepare(
+    'INSERT INTO readings_v4 (user_id, timestamp, sensor_type, value, source) VALUES (?, ?, ?, ?, ?)'
+  );
+  insertReading.run('worker_test', sevenMonthsAgo, 'HR', 70.0, 'wearable');
+  insertReading.run('worker_test', sevenMonthsAgo, 'HR', 80.0, 'wearable');
+  insertReading.run('worker_test', sevenMonthsAgo, 'AQI', 35.0, 'wearable');
+
+  // Insert recent readings (< 6 months ago) that should remain raw
+  insertReading.run('worker_test', yesterday, 'HR', 75.0, 'wearable');
+  insertReading.run('worker_test', yesterday, 'AQI', 40.0, 'wearable');
+
+  // Simulate summarizeAndPruneOldData(6)
+  const cutoffTimestamp = new Date(now - 180 * 24 * 60 * 60 * 1000).toISOString();
+  db.prepare(`
+    INSERT INTO archived_summaries (user_id, sensor_type, period_date, avg_value, min_value, max_value, sample_count)
+    SELECT user_id, sensor_type, substr(timestamp, 1, 10), AVG(value), MIN(value), MAX(value), COUNT(*)
+    FROM readings_v4
+    WHERE timestamp < ? AND user_id = ?
+    GROUP BY user_id, sensor_type, substr(timestamp, 1, 10)
+  `).run(cutoffTimestamp, 'worker_test');
+
+  db.prepare('DELETE FROM readings_v4 WHERE timestamp < ? AND user_id = ?').run(cutoffTimestamp, 'worker_test');
+
+  // Verify archived summaries
+  const summaries = db.prepare('SELECT * FROM archived_summaries WHERE user_id = ?').all('worker_test') as any[];
+  assert.strictEqual(summaries.length, 2);
+  const hrSummary = summaries.find((s) => s.sensor_type === 'HR');
+  assert.ok(hrSummary);
+  assert.strictEqual(hrSummary.sample_count, 2);
+  assert.strictEqual(hrSummary.avg_value, 75.0);
+  assert.strictEqual(hrSummary.min_value, 70.0);
+  assert.strictEqual(hrSummary.max_value, 80.0);
+
+  // Verify remaining raw readings (only recent readings remain)
+  const remainingReadings = db.prepare('SELECT * FROM readings_v4 WHERE user_id = ?').all('worker_test') as any[];
+  assert.strictEqual(remainingReadings.length, 2);
+
+  // Test clearAllData: wipe everything for this user
+  db.prepare('DELETE FROM readings_v4 WHERE user_id = ?').run('worker_test');
+  db.prepare('DELETE FROM archived_summaries WHERE user_id = ?').run('worker_test');
+
+  const wipedReadings = db.prepare('SELECT COUNT(*) as c FROM readings_v4 WHERE user_id = ?').get('worker_test') as any;
+  const wipedSummaries = db.prepare('SELECT COUNT(*) as c FROM archived_summaries WHERE user_id = ?').get('worker_test') as any;
+  assert.strictEqual(wipedReadings.c, 0);
+  assert.strictEqual(wipedSummaries.c, 0);
+
+  console.log('  ✔ 6-Month downsampling rollup and data erasure utility verified');
+}
+
 console.log('\n================================================================');
-console.log('ALL DATABASE TESTS PASSED (11 / 11)');
+console.log('ALL DATABASE TESTS PASSED (12 / 12)');
 console.log('================================================================\n');
 

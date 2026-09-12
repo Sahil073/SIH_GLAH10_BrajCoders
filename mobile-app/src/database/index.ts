@@ -24,6 +24,9 @@ import {
   clearReadings as rawClearReadings,
   deleteAlert as rawDeleteAlert,
   clearAllAlerts as rawClearAllAlerts,
+  clearAllData as rawClearAllData,
+  summarizeAndPruneOldData as rawSummarizeAndPruneOldData,
+  getStorageStats as rawGetStorageStats,
   saveLocalUserProfile as rawSaveLocalUserProfile,
   getLocalUserProfile as rawGetLocalUserProfile,
   clearLocalUserProfile as rawClearLocalUserProfile,
@@ -162,6 +165,52 @@ export async function truncateReadings(sensorType?: string, userId?: string): Pr
     await rawClearReadings(sensorType, userId);
   } catch (error) {
     console.warn("[Database] Failed to clear readings:", error);
+  }
+}
+
+/**
+ * Erase all health readings, alerts, baselines, and summaries from the database
+ * to provide a clean slate (e.g. after testing noisy prototype sensors).
+ */
+export async function clearAllHealthData(userId?: string): Promise<void> {
+  try {
+    await rawClearAllData(userId);
+    console.log(`[Database] All health telemetry erased for [${userId || "all"}].`);
+  } catch (error) {
+    console.warn("[Database] Failed to clear all health data:", error);
+  }
+}
+
+/**
+ * Downsamples readings older than cutoff months (default 6) into daily summaries and prunes raw data.
+ */
+export async function archiveAndPruneData(
+  monthsCutoff: number = 6,
+  userId?: string
+): Promise<{ archivedRows: number; prunedRows: number }> {
+  try {
+    const res = await rawSummarizeAndPruneOldData(monthsCutoff, userId);
+    console.log(`[Database] Archived and pruned records older than ${monthsCutoff} months.`);
+    return res;
+  } catch (error) {
+    console.warn("[Database] Failed to archive and prune data:", error);
+    return { archivedRows: 0, prunedRows: 0 };
+  }
+}
+
+/**
+ * Fetch storage record statistics for UI display and diagnostics.
+ */
+export async function fetchStorageStats(userId?: string): Promise<{
+  readingsCount: number;
+  alertsCount: number;
+  summariesCount: number;
+}> {
+  try {
+    return await rawGetStorageStats(userId);
+  } catch (error) {
+    console.warn("[Database] Failed to fetch storage stats:", error);
+    return { readingsCount: 0, alertsCount: 0, summariesCount: 0 };
   }
 }
 

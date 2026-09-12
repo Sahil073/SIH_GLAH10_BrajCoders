@@ -51,33 +51,102 @@ function getAIThinkingNarrative(
     return {
       headline: "AI Calibrated • Standing By",
       description:
-        "DSP algorithms (Pan-Tompkins QRS, Rothfusz Heat Index, and 3-axis motion classifier) are ready. Connect the ESP32 to start streaming live telemetry.",
+        "DSP algorithms (Pan-Tompkins QRS, Rothfusz Heat Index, 3-axis motion classifier, and MQ135 AQI) are calibrated. Connect the wearable or individual component sketch to stream telemetry.",
       tag: "Standby",
     };
   }
 
-  // Motion activity narrative
-  let activityDesc = "Worker is currently in REST state (static gravity vector 1.0g).";
+  const hasEcg = Boolean(ai.heartRate && ai.heartRate > 30);
+  const hasMotion = Boolean(ai.motion.level > 0.05);
+  const hasHeat = Boolean(ai.environment.heatIndex && ai.environment.heatIndex > 0);
+  const hasAqi = Boolean(ai.environment.aqi && ai.environment.aqi > 0);
+
+  // Component Test 1: Only MQ135 Air Quality Sensor Active
+  if (hasAqi && !hasEcg && !hasHeat) {
+    const aqiVal = Math.round(ai.environment.aqi!);
+    const category =
+      aqiVal > 150
+        ? "Hazardous"
+        : aqiVal > 100
+        ? "Unhealthy"
+        : aqiVal > 50
+        ? "Moderate"
+        : "Good / Safe";
+    const alertAdvice =
+      aqiVal > 100
+        ? "Elevated atmospheric pollutants detected. Respirator / ventilation advised."
+        : "Air quality is optimal. Low ambient respiratory strain.";
+    return {
+      headline:
+        aqiVal > 100 ? "Air Quality Warning • MQ135 Active" : "Air Quality Normal • MQ135 Active",
+      description: `Live MQ135 sensor telemetry: AQI is ${aqiVal} (${category}). ${alertAdvice} Respiratory Risk Level: ${ai.risks.respiratory.level}.`,
+      tag: "MQ135 Testing",
+    };
+  }
+
+  // Component Test 2: Only ADXL345 Motion Classifier Active
+  if (hasMotion && !hasEcg && !hasAqi && !hasHeat) {
+    return {
+      headline: ai.risks.fall.detected
+        ? "Critical Fall Event Detected!"
+        : `Motion Classifier Active • ${ai.motion.state}`,
+      description: `Live ADXL345 3-axis streaming: |a| = ${ai.motion.level.toFixed(
+        2
+      )}g. Current classified posture: ${ai.motion.state}. 3-stage impact & post-fall confirmation gate armed.`,
+      tag: "ADXL345 Testing",
+    };
+  }
+
+  // Component Test 3: Only BioAmp EXG Cardiac Biopotential Active
+  if (hasEcg && !hasMotion && !hasAqi && !hasHeat) {
+    const hr = Math.round(ai.heartRate!);
+    const sqiPct = Math.round((ai.signalQuality?.ecg || 0.85) * 100);
+    return {
+      headline:
+        ai.risks.cardiac.level === "RISK"
+          ? "Elevated Cardiac Rhythm Risk"
+          : `Cardiac QRS Active • ${hr} BPM`,
+      description: `Pan-Tompkins DSP tracking continuous QRS complexes at ${hr} BPM (SQI: ${sqiPct}%). Cardiac strain score: ${ai.risks.cardiac.score}/100.`,
+      tag: "BioAmp EXG Testing",
+    };
+  }
+
+  // Component Test 4: Only DHT11 Thermal & Humidity Active
+  if (hasHeat && !hasEcg && !hasAqi) {
+    const hi = ai.environment.heatIndex!.toFixed(1);
+    const temp = ai.environment.temperature?.toFixed(1) ?? "--";
+    const hum = ai.environment.humidity?.toFixed(0) ?? "--";
+    return {
+      headline:
+        ai.risks.heat.level === "RISK"
+          ? "High Thermal Stress Warning"
+          : `Thermal Index Active • ${hi}°C`,
+      description: `DHT11 ambient readings: ${temp}°C, ${hum}% RH. Rothfusz Heat Index: ${hi}°C. Heat stress score: ${ai.risks.heat.score}/100.`,
+      tag: "DHT11 Testing",
+    };
+  }
+
+  // Full Sensor Hub Narrative (Multiple or all sensors streaming)
+  let activityDesc = "Worker is in REST state (static gravity 1.0g).";
   if (ai.motion.state === "ACTIVE") {
-    activityDesc = `Vigorous activity detected (intensity: ${ai.motion.level.toFixed(2)}g). Cardiac recovery buffer active.`;
+    activityDesc = `Vigorous activity detected (${ai.motion.level.toFixed(2)}g). Cardiac recovery buffer active.`;
   } else if (ai.motion.state === "LIGHT") {
     activityDesc = `Light movement / walking detected (${ai.motion.level.toFixed(2)}g). Accelerometer indicates steady posture.`;
   }
 
-  // Cardiac / vitals narrative
   let cardiacDesc = "";
   if (ai.heartRate) {
     const hr = Math.round(ai.heartRate);
     const sqiPct = Math.round((ai.signalQuality?.ecg || 0.82) * 100);
-    cardiacDesc = `Pan-Tompkins detected QRS complexes at ${hr} BPM (SQI: ${sqiPct}%).`;
-  } else {
-    cardiacDesc = "Filtering biopotential waves for continuous QRS detection.";
+    cardiacDesc = `Pan-Tompkins QRS detected at ${hr} BPM (SQI: ${sqiPct}%).`;
   }
 
-  // Thermal narrative
   let envDesc = "";
   if (ai.environment.heatIndex) {
-    envDesc = `Thermal index is ${ai.environment.heatIndex.toFixed(1)}°C (within safe bounds).`;
+    envDesc = `Thermal index is ${ai.environment.heatIndex.toFixed(1)}°C.`;
+  }
+  if (ai.environment.aqi) {
+    envDesc += ` AQI: ${Math.round(ai.environment.aqi)}.`;
   }
 
   let headline = "Normal Activity & Vitals";
@@ -94,7 +163,7 @@ function getAIThinkingNarrative(
   return {
     headline,
     description: `${activityDesc} ${cardiacDesc} ${envDesc}`.trim(),
-    tag: "Live DSP Active",
+    tag: "Sensor Hub Active",
   };
 }
 
@@ -525,9 +594,37 @@ export function AIRiskBanner() {
                 </Text>
                 <View className="space-y-1.5">
                   <View className="flex-row justify-between">
+                    <Text style={{ color: colors.textSecondary }} className="font-poppins-regular text-xs">Ambient Temperature:</Text>
+                    <Text style={{ color: colors.textPrimary }} className="font-poppins-medium text-xs">
+                      {ai.environment.temperature ? `${ai.environment.temperature.toFixed(1)}°C` : "--"}
+                    </Text>
+                  </View>
+                  <View className="flex-row justify-between">
+                    <Text style={{ color: colors.textSecondary }} className="font-poppins-regular text-xs">Relative Humidity:</Text>
+                    <Text style={{ color: colors.textPrimary }} className="font-poppins-medium text-xs">
+                      {ai.environment.humidity ? `${ai.environment.humidity.toFixed(0)}%` : "--"}
+                    </Text>
+                  </View>
+                  <View className="flex-row justify-between">
                     <Text style={{ color: colors.textSecondary }} className="font-poppins-regular text-xs">Rothfusz Heat Index:</Text>
                     <Text style={{ color: colors.textPrimary }} className="font-poppins-medium text-xs">
-                      {ai.environment.heatIndex ? `${ai.environment.heatIndex.toFixed(1)}°C` : "29.4°C"}
+                      {ai.environment.heatIndex ? `${ai.environment.heatIndex.toFixed(1)}°C` : "--"}
+                    </Text>
+                  </View>
+                  <View className="flex-row justify-between">
+                    <Text style={{ color: colors.textSecondary }} className="font-poppins-regular text-xs">MQ135 Air Quality (AQI):</Text>
+                    <Text style={{ color: colors.textPrimary }} className="font-poppins-medium text-xs">
+                      {ai.environment.aqi
+                        ? `${Math.round(ai.environment.aqi)} (${
+                            ai.environment.aqi > 100 ? "Unhealthy" : "Good / Safe"
+                          })`
+                        : "--"}
+                    </Text>
+                  </View>
+                  <View className="flex-row justify-between">
+                    <Text style={{ color: colors.textSecondary }} className="font-poppins-regular text-xs">Air / Resp Risk Score:</Text>
+                    <Text style={{ color: colors.textPrimary }} className="font-poppins-bold text-xs">
+                      {ai.risks.respiratory.score} / 100 ({ai.risks.respiratory.level})
                     </Text>
                   </View>
                   <View className="flex-row justify-between">

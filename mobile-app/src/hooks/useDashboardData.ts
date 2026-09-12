@@ -109,19 +109,24 @@ export function useDashboardData() {
             },
             temperature: {
               ...prev.temperature,
-              value: averages.temp ?? 0,
+              value: averages.temp != null && tempHistory.length > 0 ? averages.temp : 0,
               history: tempHistory.map((h) => h.value),
             },
             aqi: {
               ...prev.aqi,
-              value: averages.aqi ?? 0,
-              statusLabel: averages.aqi ? (averages.aqi > 100 ? "Unhealthy" : "Good") : "--",
+              value: averages.aqi != null && aqiHistory.length > 0 ? averages.aqi : 0,
+              statusLabel:
+                averages.aqi != null && aqiHistory.length > 0
+                  ? averages.aqi > 100
+                    ? "Unhealthy"
+                    : "Good"
+                  : "--",
               history: aqiHistory.map((h) => h.value),
             },
             moisture: {
               ...prev.moisture,
-              value: averages.humidity ?? 0,
-              statusLabel: averages.humidity ? "Normal" : "--",
+              value: averages.humidity != null && moistHistory.length > 0 ? averages.humidity : 0,
+              statusLabel: averages.humidity != null && moistHistory.length > 0 ? "Normal" : "--",
               history: moistHistory.map((h) => h.value),
             },
             activity: {

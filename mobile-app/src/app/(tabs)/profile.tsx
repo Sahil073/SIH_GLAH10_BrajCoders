@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import { useUserProfile, GenderType, BloodGroupType } from "@/store/userProfileS
 import { useBle } from "@/ble";
 import { useTheme } from "@/store/themeStore";
 import { RawDataRecorderCard } from "@/components/common/RawDataRecorderCard";
+import { clearAllHealthData, archiveAndPruneData, fetchStorageStats } from "@/database";
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -36,6 +37,72 @@ export default function ProfileScreen() {
 
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Storage and data management state
+  const [storageStats, setStorageStats] = useState<{
+    readingsCount: number;
+    alertsCount: number;
+    summariesCount: number;
+  }>({ readingsCount: 0, alertsCount: 0, summariesCount: 0 });
+  const [isClearingData, setIsClearingData] = useState(false);
+  const [isArchivingData, setIsArchivingData] = useState(false);
+
+  const loadStats = useCallback(async () => {
+    try {
+      const stats = await fetchStorageStats(activeUserId);
+      setStorageStats(stats);
+    } catch {}
+  }, [activeUserId]);
+
+  useEffect(() => {
+    void loadStats();
+  }, [loadStats]);
+
+  const handleClearAllData = () => {
+    const title = "Erase All Telemetry & Test Data?";
+    const msg =
+      "This will erase all recorded raw readings, alerts, and past session averages for this profile. Use this to remove noisy prototype testing data and start fresh.";
+    if (Platform.OS === "web") {
+      if (typeof window !== "undefined" && window.confirm(`${title}\n\n${msg}`)) {
+        void (async () => {
+          setIsClearingData(true);
+          await clearAllHealthData(activeUserId);
+          await loadStats();
+          setIsClearingData(false);
+          alert("All test telemetry has been cleared.");
+        })();
+      }
+    } else {
+      Alert.alert(title, msg, [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Erase Everything",
+          style: "destructive",
+          onPress: async () => {
+            setIsClearingData(true);
+            await clearAllHealthData(activeUserId);
+            await loadStats();
+            setIsClearingData(false);
+            Alert.alert("Success", "All test telemetry has been cleared.");
+          },
+        },
+      ]);
+    }
+  };
+
+  const handleArchiveAndPrune = async () => {
+    setIsArchivingData(true);
+    await archiveAndPruneData(6, activeUserId);
+    await loadStats();
+    setIsArchivingData(false);
+    const msg =
+      "Historical readings older than 6 months have been downsampled into statistical daily summaries and pruned from raw storage.";
+    if (Platform.OS === "web") {
+      alert(msg);
+    } else {
+      Alert.alert("Downsampling Complete", msg);
+    }
+  };
 
   // Modal states: cleanly separated
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
@@ -504,6 +571,114 @@ export default function ProfileScreen() {
                 {profile.emergencyContactPhone}
               </Text>
             </View>
+          </View>
+        </View>
+
+        {/* Data Storage & Testing Diagnostics Card */}
+        <View
+          style={{
+            backgroundColor: colors.cardBg,
+            borderColor: colors.cardBorder,
+          }}
+          className="rounded-3xl p-5 mb-4 border shadow-xs"
+        >
+          <View className="flex-row items-center justify-between mb-3">
+            <View className="flex-row items-center gap-2">
+              <View className="w-8 h-8 rounded-xl bg-amber-500/15 items-center justify-center">
+                <Text className="text-sm">🗄️</Text>
+              </View>
+              <View>
+                <Text style={{ color: colors.textPrimary }} className="font-poppins-bold text-sm">
+                  Data Storage & Retention
+                </Text>
+                <Text style={{ color: colors.textSecondary }} className="font-poppins-regular text-[11px]">
+                  Testing Cleanup & 6-Month Rollup Policy
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Storage Statistics Row */}
+          <View
+            style={{
+              backgroundColor: colors.backgroundSecondary,
+              borderColor: colors.cardBorder,
+            }}
+            className="rounded-2xl p-3.5 mb-3 border flex-row items-center justify-around"
+          >
+            <View className="items-center">
+              <Text style={{ color: colors.textPrimary }} className="font-poppins-bold text-base">
+                {storageStats.readingsCount}
+              </Text>
+              <Text style={{ color: colors.textSecondary }} className="font-poppins-regular text-[10px]">
+                Raw Readings
+              </Text>
+            </View>
+            <View style={{ width: 1, height: 24, backgroundColor: colors.divider }} />
+            <View className="items-center">
+              <Text style={{ color: colors.textPrimary }} className="font-poppins-bold text-base">
+                {storageStats.alertsCount}
+              </Text>
+              <Text style={{ color: colors.textSecondary }} className="font-poppins-regular text-[10px]">
+                Alerts Logged
+              </Text>
+            </View>
+            <View style={{ width: 1, height: 24, backgroundColor: colors.divider }} />
+            <View className="items-center">
+              <Text style={{ color: colors.textPrimary }} className="font-poppins-bold text-base">
+                {storageStats.summariesCount}
+              </Text>
+              <Text style={{ color: colors.textSecondary }} className="font-poppins-regular text-[10px]">
+                Archived (6+ Mo)
+              </Text>
+            </View>
+          </View>
+
+          {/* Action Buttons */}
+          <View className="flex-row gap-2">
+            <TouchableOpacity
+              activeOpacity={0.8}
+              disabled={isClearingData}
+              onPress={handleClearAllData}
+              style={{
+                backgroundColor: isDark ? "#3F1B1B" : "#FEE2E2",
+                borderColor: isDark ? "#7F1D1D" : "#FCA5A5",
+              }}
+              className="flex-1 py-2.5 rounded-xl border items-center justify-center flex-row gap-1.5"
+            >
+              {isClearingData ? (
+                <ActivityIndicator size="small" color="#DC2626" />
+              ) : (
+                <>
+                  <Text className="text-xs">🗑️</Text>
+                  <Text className="font-poppins-semibold text-xs text-[#DC2626]">
+                    Erase All Test Data
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.8}
+              disabled={isArchivingData}
+              onPress={handleArchiveAndPrune}
+              style={{
+                backgroundColor: isDark ? "#1E2A38" : "#E0F2FE",
+                borderColor: isDark ? "#2563EB" : "#BAE6FD",
+              }}
+              className="flex-1 py-2.5 rounded-xl border items-center justify-center flex-row gap-1.5"
+            >
+              {isArchivingData ? (
+                <ActivityIndicator size="small" color="#0284C7" />
+              ) : (
+                <>
+                  <Text className="text-xs">📦</Text>
+                  <Text style={{ color: isDark ? "#93C5FD" : "#0369A1" }} className="font-poppins-semibold text-xs">
+                    Archive & Prune
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
           </View>
         </View>
 

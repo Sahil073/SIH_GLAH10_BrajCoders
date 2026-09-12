@@ -22,9 +22,12 @@ const ALERT_COOLDOWN_MS = 30000;      // Debounce repeated alert insertions by 3
 
 class AIBridgeService {
   private ecgBuffer: number[] = [];
-  private lastAccel = { x: 0, y: 0, z: 1.0 }; // Default ~1g stationary
-  private lastDht = { temperature: 28.0, humidity: 50.0 };
-  private lastMq135 = 450;
+  private lastAccel = { x: 0, y: 0, z: 1.0 };
+  private lastDht: { temperature: number | null; humidity: number | null } = {
+    temperature: null,
+    humidity: null,
+  };
+  private lastMq135: number | null = null;
   private lastProcessTime = 0;
   private lastDbLogTime = 0;
   private lastAlertTimes: Record<string, number> = {};
@@ -82,8 +85,8 @@ class AIBridgeService {
   public reset(): void {
     this.ecgBuffer = [];
     this.lastAccel = { x: 0, y: 0, z: 1.0 };
-    this.lastDht = { temperature: 28.0, humidity: 50.0 };
-    this.lastMq135 = 450;
+    this.lastDht = { temperature: null, humidity: null };
+    this.lastMq135 = null;
     this.lastProcessTime = 0;
     this.lastDbLogTime = 0;
     this.lastAlertTimes = {};
@@ -208,15 +211,15 @@ class AIBridgeService {
       safeInsertReading("HR", Math.round(output.heartRate), "garment", uid);
     }
 
-    if (output.environment.temperature && output.environment.temperature > 0) {
+    if (output.environment.temperature != null && output.environment.temperature > 0) {
       safeInsertReading("TEMP", Number(output.environment.temperature.toFixed(1)), "garment", uid);
     }
 
-    if (output.environment.humidity && output.environment.humidity > 0) {
+    if (output.environment.humidity != null && output.environment.humidity > 0) {
       safeInsertReading("HUMIDITY", Number(output.environment.humidity.toFixed(1)), "garment", uid);
     }
 
-    if (output.environment.aqi && output.environment.aqi > 0) {
+    if (output.environment.aqi != null && output.environment.aqi > 0) {
       safeInsertReading("AQI", Math.round(output.environment.aqi), "garment", uid);
     }
 

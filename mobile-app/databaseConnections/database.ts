@@ -95,6 +95,19 @@ export async function initDb() {
       last_updated TEXT NOT NULL,
       PRIMARY KEY (user_id, metric_type)
     );
+
+    CREATE TABLE IF NOT EXISTS archived_summaries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL DEFAULT 'offline_local',
+      sensor_type TEXT NOT NULL,
+      period_date TEXT NOT NULL,
+      avg_value REAL NOT NULL,
+      min_value REAL NOT NULL,
+      max_value REAL NOT NULL,
+      sample_count INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_summaries_user_sensor ON archived_summaries(user_id, sensor_type, period_date);
   `);
 
   const result = await db.getFirstAsync<{user_version: number}>('PRAGMA user_version');
@@ -182,27 +195,128 @@ export async function initDb() {
     await db.execAsync('PRAGMA user_version = 4');
     console.log('Database migrated to v4: multi-user schema complete.');
   }
+
+  if (currentVersion < 5) {
+    try {
+      await db.execAsync(`
+        CREATE TABLE IF NOT EXISTS archived_summaries (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id TEXT NOT NULL DEFAULT 'offline_local',
+          sensor_type TEXT NOT NULL,
+          period_date TEXT NOT NULL,
+          avg_value REAL NOT NULL,
+          min_value REAL NOT NULL,
+          max_value REAL NOT NULL,
+          sample_count INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_summaries_user_sensor ON archived_summaries(user_id, sensor_type, period_date);
+      `);
+    } catch {}
+    await db.execAsync('PRAGMA user_version = 5');
+    console.log('Database migrated to v5: archived_summaries table initialized.');
+  }
 }
 
 /**
- * Prunes raw readings older than 7 days for a specific user or globally.
+ * Downsamples and archives raw readings older than specified months (default: 6 months / 180 days)
+ * into compact daily statistical summaries (avg, min, max, count), then prunes the raw high-frequency records.
  */
-export async function pruneOldData(userId?: string) {
+export async function summarizeAndPruneOldData(
+  monthsCutoff: number = 6,
+  userId?: string
+): Promise<{ archivedRows: number; prunedRows: number }> {
   const db = await getDb();
-  const date7DaysAgo = new Date();
-  date7DaysAgo.setDate(date7DaysAgo.getDate() - 7);
-  const cutoffTimestamp = date7DaysAgo.toISOString();
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - monthsCutoff * 30);
+  const cutoffTimestamp = cutoffDate.toISOString();
 
   if (userId) {
     const uid = normalizeUserId(userId);
+    // 1. Rollup daily aggregates into archived_summaries
     await db.runAsync(
-      'DELETE FROM readings WHERE timestamp < ? AND user_id = ?',
+      `INSERT INTO archived_summaries (user_id, sensor_type, period_date, avg_value, min_value, max_value, sample_count)
+       SELECT user_id, sensor_type, substr(timestamp, 1, 10) as period_date, AVG(value), MIN(value), MAX(value), COUNT(*)
+       FROM readings
+       WHERE timestamp < ? AND user_id = ?
+       GROUP BY user_id, sensor_type, substr(timestamp, 1, 10)`,
       cutoffTimestamp,
       uid
     );
+
+    // 2. Delete the raw records
+    await db.runAsync('DELETE FROM readings WHERE timestamp < ? AND user_id = ?', cutoffTimestamp, uid);
   } else {
+    await db.runAsync(
+      `INSERT INTO archived_summaries (user_id, sensor_type, period_date, avg_value, min_value, max_value, sample_count)
+       SELECT user_id, sensor_type, substr(timestamp, 1, 10) as period_date, AVG(value), MIN(value), MAX(value), COUNT(*)
+       FROM readings
+       WHERE timestamp < ?
+       GROUP BY user_id, sensor_type, substr(timestamp, 1, 10)`,
+      cutoffTimestamp
+    );
+
     await db.runAsync('DELETE FROM readings WHERE timestamp < ?', cutoffTimestamp);
   }
+
+  return { archivedRows: 0, prunedRows: 0 };
+}
+
+/**
+ * Prunes raw readings older than 6 months (auto-summarizing).
+ */
+export async function pruneOldData(userId?: string) {
+  await summarizeAndPruneOldData(6, userId);
+}
+
+/**
+ * Erases all health telemetry, alerts, baselines, and summaries from the database
+ * to provide a clean slate (e.g. after testing noisy prototype sensors).
+ */
+export async function clearAllData(userId?: string): Promise<void> {
+  const db = await getDb();
+  if (userId) {
+    const uid = normalizeUserId(userId);
+    await db.runAsync('DELETE FROM readings WHERE user_id = ?', uid);
+    await db.runAsync('DELETE FROM alerts WHERE user_id = ?', uid);
+    await db.runAsync('DELETE FROM archived_summaries WHERE user_id = ?', uid);
+    await db.runAsync('DELETE FROM rolling_baseline WHERE user_id = ?', uid);
+  } else {
+    await db.runAsync('DELETE FROM readings');
+    await db.runAsync('DELETE FROM alerts');
+    await db.runAsync('DELETE FROM archived_summaries');
+    await db.runAsync('DELETE FROM rolling_baseline');
+  }
+}
+
+/**
+ * Returns storage record counts for UI diagnostics.
+ */
+export async function getStorageStats(userId?: string): Promise<{
+  readingsCount: number;
+  alertsCount: number;
+  summariesCount: number;
+}> {
+  const db = await getDb();
+  const uid = normalizeUserId(userId);
+
+  const readingsRow = await db.getFirstAsync<{ count: number }>(
+    userId ? 'SELECT COUNT(*) as count FROM readings WHERE user_id = ?' : 'SELECT COUNT(*) as count FROM readings',
+    ...(userId ? [uid] : [])
+  );
+  const alertsRow = await db.getFirstAsync<{ count: number }>(
+    userId ? 'SELECT COUNT(*) as count FROM alerts WHERE user_id = ?' : 'SELECT COUNT(*) as count FROM alerts',
+    ...(userId ? [uid] : [])
+  );
+  const summariesRow = await db.getFirstAsync<{ count: number }>(
+    userId ? 'SELECT COUNT(*) as count FROM archived_summaries WHERE user_id = ?' : 'SELECT COUNT(*) as count FROM archived_summaries',
+    ...(userId ? [uid] : [])
+  );
+
+  return {
+    readingsCount: readingsRow?.count || 0,
+    alertsCount: alertsRow?.count || 0,
+    summariesCount: summariesRow?.count || 0,
+  };
 }
 
 // ---------------- READINGS (USER-SCOPED) ----------------
