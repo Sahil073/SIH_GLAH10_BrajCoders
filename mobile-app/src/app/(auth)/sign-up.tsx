@@ -15,6 +15,7 @@ import { images } from "@/constants/images";
 import { SocialAuthButton, SocialProvider } from "@/components/auth/SocialAuthButton";
 import { VerificationModal } from "@/components/auth/VerificationModal";
 import { useUserProfile } from "@/store/userProfileStore";
+import { MailIcon, LockIcon, EyeIcon, EyeOffIcon } from "@/components/common/AppIcons";
 
 export default function SignUpScreen() {
   const router = useRouter();
@@ -196,7 +197,7 @@ export default function SignUpScreen() {
           {/* Email Input */}
           <View className="border border-[#E2E8E4] rounded-2xl px-4 py-3 bg-white flex-row items-center mb-3.5 shadow-sm">
             <View className="w-9 h-9 rounded-xl bg-[#F4F7F5] items-center justify-center mr-3 border border-[#E8EEEA]">
-              <Text className="text-base">✉️</Text>
+              <MailIcon size={18} color="#214332" />
             </View>
             <View className="flex-1">
               <Text className="font-poppins-regular text-[11px] text-[#6B7E74] leading-tight">
@@ -218,7 +219,7 @@ export default function SignUpScreen() {
           {/* Password Input */}
           <View className="border border-[#E2E8E4] rounded-2xl px-4 py-3 bg-white flex-row items-center mb-5 shadow-sm">
             <View className="w-9 h-9 rounded-xl bg-[#F4F7F5] items-center justify-center mr-3 border border-[#E8EEEA]">
-              <Text className="text-base">🔒</Text>
+              <LockIcon size={18} color="#214332" />
             </View>
             <View className="flex-1">
               <Text className="font-poppins-regular text-[11px] text-[#6B7E74] leading-tight">
@@ -239,9 +240,11 @@ export default function SignUpScreen() {
               onPress={() => setShowPassword(!showPassword)}
               className="p-2"
             >
-              <Text className="text-base text-gray-500">
-                {showPassword ? "👁️" : "👁️‍🗨️"}
-              </Text>
+              {showPassword ? (
+                <EyeOffIcon size={18} color="#64748B" />
+              ) : (
+                <EyeIcon size={18} color="#64748B" />
+              )}
             </TouchableOpacity>
           </View>
 

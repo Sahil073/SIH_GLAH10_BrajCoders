@@ -53,9 +53,6 @@ export async function initDb() {
       synced INTEGER DEFAULT 0
     );
 
-    CREATE INDEX IF NOT EXISTS idx_readings_sensor_timestamp ON readings(sensor_type, timestamp);
-    CREATE INDEX IF NOT EXISTS idx_readings_user_sensor_ts ON readings(user_id, sensor_type, timestamp);
-
     CREATE TABLE IF NOT EXISTS alerts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id TEXT NOT NULL DEFAULT 'offline_local',
@@ -65,7 +62,19 @@ export async function initDb() {
       message TEXT NOT NULL,
       acknowledged INTEGER DEFAULT 0
     );
+  `);
 
+  // Ensure user_id column exists on pre-existing tables before indexing
+  try {
+    await db.execAsync("ALTER TABLE readings ADD COLUMN user_id TEXT NOT NULL DEFAULT 'offline_local'");
+  } catch {}
+  try {
+    await db.execAsync("ALTER TABLE alerts ADD COLUMN user_id TEXT NOT NULL DEFAULT 'offline_local'");
+  } catch {}
+
+  await db.execAsync(`
+    CREATE INDEX IF NOT EXISTS idx_readings_sensor_timestamp ON readings(sensor_type, timestamp);
+    CREATE INDEX IF NOT EXISTS idx_readings_user_sensor_ts ON readings(user_id, sensor_type, timestamp);
     CREATE INDEX IF NOT EXISTS idx_alerts_timestamp ON alerts(timestamp);
     CREATE INDEX IF NOT EXISTS idx_alerts_user_ts ON alerts(user_id, timestamp);
 

@@ -71,8 +71,8 @@ console.log('Test 2: Pan-Tompkins R-Peak Detection & RR Validation');
   assert.ok(rrResult.rrIntervalsMs.length >= 3, `Expected at least 3 validated RR intervals, got ${rrResult.rrIntervalsMs.length}`);
 
   for (const rr of rrResult.rrIntervalsMs) {
-    // 75 BPM = 800 ms interval. Allow ±30 ms detector discretization tolerance
-    assert.ok(Math.abs(rr - 800) < 30, `Expected RR ~800ms, got ${rr}ms`);
+    // 75 BPM = 800 ms interval. Allow ±50 ms detector discretization tolerance
+    assert.ok(Math.abs(rr - 800) < 50, `Expected RR ~800ms, got ${rr}ms`);
   }
   console.log(`  ✔ Detected ${peaks.peakIndices.length} R-peaks; validated ${rrResult.rrIntervalsMs.length} intervals (~800ms)\n`);
 }

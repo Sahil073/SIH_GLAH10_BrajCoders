@@ -15,6 +15,7 @@ import {
   saveUserProfile,
 } from "@/store/userProfileStore";
 import Svg, { Path, Circle } from "react-native-svg";
+import { ScaleIcon } from "@/components/common/AppIcons";
 
 const BLOOD_GROUPS: BloodGroupType[] = [
   "A+",
@@ -483,7 +484,7 @@ export default function OnboardingHealthScreen() {
                   </Text>
                 </View>
                 <View className="w-9 h-9 rounded-full bg-white items-center justify-center border border-[#D5EBDE]">
-                  <Text className="text-base">⚖️</Text>
+                  <ScaleIcon size={18} color="#059669" />
                 </View>
               </View>
             </View>

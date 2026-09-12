@@ -127,15 +127,14 @@ export function useTheme() {
     };
   }, []);
 
-  const isDark =
-    mode === "dark" || (mode === "system" && systemScheme === "dark");
-
-  const colors = isDark ? DARK_PALETTE : LIGHT_PALETTE;
+  // App UI is explicitly locked to clean light mode throughout
+  const isDark = false;
+  const colors = LIGHT_PALETTE;
 
   const toggleTheme = useCallback(async () => {
-    const nextMode: ThemeMode = isDark ? "light" : "dark";
-    await setStoredThemeMode(nextMode);
-  }, [isDark]);
+    // Keep light theme active
+    await setStoredThemeMode("light");
+  }, []);
 
   const setTheme = useCallback(async (newMode: ThemeMode) => {
     await setStoredThemeMode(newMode);

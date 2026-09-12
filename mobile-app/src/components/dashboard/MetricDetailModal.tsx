@@ -117,11 +117,23 @@ function getMetricPillIcon(type: MetricType) {
   }
 }
 
+function normalizeMetricType(type: any): MetricType | null {
+  if (!type) return null;
+  if (type === "heartRate" || type === "heart_rate" || type === "hr") return "heart_rate";
+  if (type === "spo2" || type === "oximeter") return "spo2";
+  if (type === "temperature" || type === "temp") return "temperature";
+  if (type === "aqi" || type === "airQuality") return "aqi";
+  if (type === "moisture" || type === "humidity") return "moisture";
+  if (type === "activity" || type === "steps") return "activity";
+  return type as MetricType;
+}
+
 export function MetricDetailModal({
   visible,
-  metricType,
+  metricType: rawMetricType,
   onClose,
 }: MetricDetailModalProps) {
+  const metricType = normalizeMetricType(rawMetricType);
   const { colors, isDark } = useTheme();
   const { activeUserId } = useUserProfile();
   const { data } = useDashboardData();

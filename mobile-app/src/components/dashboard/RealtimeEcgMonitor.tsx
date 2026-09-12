@@ -12,6 +12,7 @@ import { Esp32Packet, SensorId } from "@/ble/types";
 import { useBle } from "@/ble";
 import { useTheme } from "@/store/themeStore";
 import { useAiRisk } from "@/store/aiStore";
+import { HeartIcon } from "@/components/common/AppIcons";
 
 const MONITOR_WIDTH = 340;
 const MONITOR_HEIGHT = 160;
@@ -129,7 +130,7 @@ export function RealtimeEcgMonitor() {
               }}
               className="w-8 h-8 rounded-full items-center justify-center mr-2.5 transition-all"
             >
-              <Text className="text-sm">❤️</Text>
+              <HeartIcon size={14} color="#FFFFFF" />
             </View>
             <View>
               <View className="flex-row items-center">

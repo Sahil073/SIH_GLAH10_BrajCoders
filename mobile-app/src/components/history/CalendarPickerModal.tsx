@@ -5,6 +5,7 @@ import {
   Modal,
   TouchableOpacity,
   Pressable,
+  StyleSheet,
 } from "react-native";
 import {
   ChevronLeftIcon,
@@ -127,7 +128,7 @@ export function CalendarPickerModal({
             <TouchableOpacity
               activeOpacity={0.7}
               onPress={onClose}
-              className="w-8 h-8 rounded-full bg-[#F5F2EB] items-center justify-center"
+              style={modalStyles.closeBtn}
             >
               <CloseModalIcon size={16} color="#55695E" />
             </TouchableOpacity>
@@ -138,7 +139,7 @@ export function CalendarPickerModal({
             <TouchableOpacity
               activeOpacity={0.7}
               onPress={handlePrevMonth}
-              className="w-8 h-8 rounded-full bg-[#F8F7F4] items-center justify-center border border-[#EAE6DF]"
+              style={modalStyles.navBtn}
             >
               <ChevronLeftIcon size={16} color="#161616" />
             </TouchableOpacity>
@@ -150,7 +151,7 @@ export function CalendarPickerModal({
             <TouchableOpacity
               activeOpacity={0.7}
               onPress={handleNextMonth}
-              className="w-8 h-8 rounded-full bg-[#F8F7F4] items-center justify-center border border-[#EAE6DF]"
+              style={modalStyles.navBtn}
             >
               <ChevronRightIcon size={16} color="#161616" />
             </TouchableOpacity>
@@ -158,10 +159,13 @@ export function CalendarPickerModal({
 
           {/* Weekday headers */}
           <View className="flex-row justify-between mb-2">
-            {WEEKDAY_NAMES.map((wd, i) => (
-              <View key={i} className="w-10 items-center justify-center">
-                <Text className="font-poppins-semibold text-[11px] text-[#9CA3AF]">
-                  {wd}
+            {WEEKDAY_NAMES.map((name, i) => (
+              <View
+                key={name + i}
+                className="w-[14.28%] items-center justify-center"
+              >
+                <Text className="font-poppins-medium text-xs text-[#8A9A90]">
+                  {name}
                 </Text>
               </View>
             ))}
@@ -169,12 +173,12 @@ export function CalendarPickerModal({
 
           {/* Days Grid */}
           <View className="flex-row flex-wrap">
-            {/* Blank offset placeholders */}
+            {/* Empty slots for month start offset */}
             {Array.from({ length: firstDayOfWeek }).map((_, i) => (
               <View key={`empty-${i}`} className="w-[14.28%] h-10" />
             ))}
 
-            {/* Month days */}
+            {/* Actual day numbers */}
             {Array.from({ length: daysInMonth }).map((_, i) => {
               const day = i + 1;
               const isSelected = isSelectedDay(day);
@@ -185,7 +189,7 @@ export function CalendarPickerModal({
                   key={day}
                   activeOpacity={0.7}
                   onPress={() => handleDayPress(day)}
-                  className="w-[14.28%] h-10 items-center justify-center"
+                  style={modalStyles.dayCell}
                 >
                   <View
                     className={`w-8 h-8 rounded-full items-center justify-center ${
@@ -218,7 +222,7 @@ export function CalendarPickerModal({
             <TouchableOpacity
               activeOpacity={0.7}
               onPress={handleSelectToday}
-              className="py-2 px-3 rounded-xl bg-[#F5F2EB]"
+              style={modalStyles.todayBtn}
             >
               <Text className="font-poppins-semibold text-xs text-[#214332]">
                 Today
@@ -228,7 +232,7 @@ export function CalendarPickerModal({
             <TouchableOpacity
               activeOpacity={0.8}
               onPress={onClose}
-              className="py-2 px-5 rounded-xl bg-[#214332]"
+              style={modalStyles.doneBtn}
             >
               <Text className="font-poppins-semibold text-xs text-white">
                 Done
@@ -240,3 +244,42 @@ export function CalendarPickerModal({
     </Modal>
   );
 }
+
+const modalStyles = StyleSheet.create({
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#F5F2EB",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  navBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#F8F7F4",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#EAE6DF",
+  },
+  dayCell: {
+    width: "14.28%",
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  todayBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: "#F5F2EB",
+  },
+  doneBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    backgroundColor: "#214332",
+  },
+});

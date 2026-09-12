@@ -19,13 +19,14 @@ import { useBle } from "@/ble";
 import { useTheme } from "@/store/themeStore";
 import { RawDataRecorderCard } from "@/components/common/RawDataRecorderCard";
 import { clearAllHealthData, archiveAndPruneData, fetchStorageStats } from "@/database";
+import { LockIcon, UsersIcon, StethoscopeIcon, SunIcon, DownloadArchiveIcon, CloudIcon } from "@/components/common/AppIcons";
 
 export default function ProfileScreen() {
   const router = useRouter();
   const { signOut } = useAuth();
   const { user } = useUser();
   const { profile, activeUserId, isOfflineUser, updateProfile, logout } = useUserProfile();
-  const { themeMode, isDark, colors, setTheme } = useTheme();
+  const { isDark, colors } = useTheme();
   const {
     connectionStatus,
     connectedDeviceId,
@@ -323,7 +324,7 @@ export default function ProfileScreen() {
           >
             <View className="flex-row items-center justify-between mb-2">
               <View className="flex-row items-center gap-2">
-                <Text className="text-xl">☁️</Text>
+                <CloudIcon size={20} color="#059669" />
                 <Text
                   style={{ color: isDark ? "#A7F3D0" : "#1E3A2B" }}
                   className="font-poppins-bold text-sm"
@@ -362,52 +363,6 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           </View>
         )}
-
-        {/* Appearance & Theme Mode Selector */}
-        <View
-          style={{ backgroundColor: colors.cardBg, borderColor: colors.cardBorder }}
-          className="rounded-2xl p-4 mb-4 border shadow-sm"
-        >
-          <Text
-            style={{ color: colors.textPrimary }}
-            className="font-poppins-bold text-sm mb-3"
-          >
-            Appearance & Theme
-          </Text>
-          <View className="flex-row space-x-2">
-            {(["light", "dark", "system"] as const).map((mode) => (
-              <TouchableOpacity
-                key={mode}
-                activeOpacity={0.7}
-                onPress={() => setTheme(mode)}
-                style={{
-                  backgroundColor:
-                    themeMode === mode
-                      ? colors.textPrimary
-                      : colors.backgroundSecondary,
-                  borderColor: colors.cardBorder,
-                }}
-                className="flex-1 py-2.5 rounded-xl border items-center justify-center"
-              >
-                <Text
-                  style={{
-                    color:
-                      themeMode === mode
-                        ? isDark ? "#121212" : "#FFFFFF"
-                        : colors.textSecondary,
-                  }}
-                  className="font-poppins-semibold text-xs"
-                >
-                  {mode === "light"
-                    ? "☀️ Light"
-                    : mode === "dark"
-                    ? "🌙 Dark"
-                    : "⚙️ Auto"}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
 
         {/* Connected Wearable Device Card */}
         <View
@@ -585,7 +540,7 @@ export default function ProfileScreen() {
           <View className="flex-row items-center justify-between mb-3">
             <View className="flex-row items-center gap-2">
               <View className="w-8 h-8 rounded-xl bg-amber-500/15 items-center justify-center">
-                <Text className="text-sm">🗄️</Text>
+                <DownloadArchiveIcon size={16} color="#D97706" />
               </View>
               <View>
                 <Text style={{ color: colors.textPrimary }} className="font-poppins-bold text-sm">
@@ -650,7 +605,6 @@ export default function ProfileScreen() {
                 <ActivityIndicator size="small" color="#DC2626" />
               ) : (
                 <>
-                  <Text className="text-xs">🗑️</Text>
                   <Text className="font-poppins-semibold text-xs text-[#DC2626]">
                     Erase All Test Data
                   </Text>
@@ -672,7 +626,6 @@ export default function ProfileScreen() {
                 <ActivityIndicator size="small" color="#0284C7" />
               ) : (
                 <>
-                  <Text className="text-xs">📦</Text>
                   <Text style={{ color: isDark ? "#93C5FD" : "#0369A1" }} className="font-poppins-semibold text-xs">
                     Archive & Prune
                   </Text>
@@ -680,6 +633,113 @@ export default function ProfileScreen() {
               )}
             </TouchableOpacity>
           </View>
+        </View>
+
+        {/* Safety, Companion & Privacy Hub */}
+        <View
+          style={{
+            backgroundColor: colors.cardBg,
+            borderColor: colors.cardBorder,
+          }}
+          className="rounded-3xl p-5 mb-4 border shadow-xs"
+        >
+          <Text
+            style={{ color: colors.textPrimary }}
+            className="font-poppins-bold text-sm mb-3"
+          >
+            Safety, Companion & Privacy Hub
+          </Text>
+
+          {/* 1. Trust & Privacy */}
+          <TouchableOpacity
+            activeOpacity={0.75}
+            onPress={() => router.push("/trust-privacy" as any)}
+            style={{ borderColor: colors.divider }}
+            className="flex-row items-center justify-between py-3 border-b"
+          >
+            <View className="flex-row items-center flex-1 mr-2">
+              <View className="w-8 h-8 rounded-xl bg-emerald-500/15 items-center justify-center mr-3">
+                <LockIcon size={16} color="#15803D" />
+              </View>
+              <View className="flex-1">
+                <Text style={{ color: colors.textPrimary }} className="font-poppins-semibold text-xs">
+                  Trust & Privacy
+                </Text>
+                <Text style={{ color: colors.textMuted }} className="font-poppins-regular text-[11px]">
+                  100% on-device guarantee & data sharing toggles
+                </Text>
+              </View>
+            </View>
+            <Text style={{ color: colors.textMuted }} className="font-poppins-semibold text-sm">›</Text>
+          </TouchableOpacity>
+
+          {/* 2. Caregiver / Family Companion */}
+          <TouchableOpacity
+            activeOpacity={0.75}
+            onPress={() => router.push("/caregiver-view" as any)}
+            style={{ borderColor: colors.divider }}
+            className="flex-row items-center justify-between py-3 border-b"
+          >
+            <View className="flex-row items-center flex-1 mr-2">
+              <View className="w-8 h-8 rounded-xl bg-blue-500/15 items-center justify-center mr-3">
+                <UsersIcon size={16} color="#2563EB" />
+              </View>
+              <View className="flex-1">
+                <Text style={{ color: colors.textPrimary }} className="font-poppins-semibold text-xs">
+                  Caregiver & Family Companion
+                </Text>
+                <Text style={{ color: colors.textMuted }} className="font-poppins-regular text-[11px]">
+                  Mirrored home status & family members list
+                </Text>
+              </View>
+            </View>
+            <Text style={{ color: colors.textMuted }} className="font-poppins-semibold text-sm">›</Text>
+          </TouchableOpacity>
+
+          {/* 3. ASHA / PHC Companion */}
+          <TouchableOpacity
+            activeOpacity={0.75}
+            onPress={() => router.push("/asha-mode" as any)}
+            style={{ borderColor: colors.divider }}
+            className="flex-row items-center justify-between py-3 border-b"
+          >
+            <View className="flex-row items-center flex-1 mr-2">
+              <View className="w-8 h-8 rounded-xl bg-purple-500/15 items-center justify-center mr-3">
+                <StethoscopeIcon size={16} color="#7C3AED" />
+              </View>
+              <View className="flex-1">
+                <Text style={{ color: colors.textPrimary }} className="font-poppins-semibold text-xs">
+                  ASHA / PHC Rapid Response
+                </Text>
+                <Text style={{ color: colors.textMuted }} className="font-poppins-regular text-[11px]">
+                  Community patient roster sorted by risk
+                </Text>
+              </View>
+            </View>
+            <Text style={{ color: colors.textMuted }} className="font-poppins-semibold text-sm">›</Text>
+          </TouchableOpacity>
+
+          {/* 4. Disaster Modes */}
+          <TouchableOpacity
+            activeOpacity={0.75}
+            onPress={() => router.push("/disaster-modes" as any)}
+            className="flex-row items-center justify-between py-3"
+          >
+            <View className="flex-row items-center flex-1 mr-2">
+              <View className="w-8 h-8 rounded-xl bg-amber-500/15 items-center justify-center mr-3">
+                <SunIcon size={16} color="#D97706" />
+              </View>
+              <View className="flex-1">
+                <Text style={{ color: colors.textPrimary }} className="font-poppins-semibold text-xs">
+                  Disaster-Specific Modes
+                </Text>
+                <Text style={{ color: colors.textMuted }} className="font-poppins-regular text-[11px]">
+                  Heat wave daily plan, AQI & flood advisory
+                </Text>
+              </View>
+            </View>
+            <Text style={{ color: colors.textMuted }} className="font-poppins-semibold text-sm">›</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Switch Account or Sign In to Another Profile */}

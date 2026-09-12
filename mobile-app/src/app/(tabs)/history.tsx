@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   METRIC_CONFIGS,
@@ -24,8 +24,11 @@ import {
   HumidityAlertIcon,
 } from "@/components/alerts/AlertIcons";
 import { WalkingPersonIcon } from "@/components/dashboard/ModernDashboardIcons";
+import { WellnessDashboard } from "@/components/wellness/WellnessDashboard";
+import { LeafIcon, TrendChartIcon, InfoIcon } from "@/components/common/AppIcons";
 
 type PeriodTab = "day" | "week" | "month";
+type HistoryViewMode = "wellness" | "charts";
 
 const MONTH_NAMES = [
   "Jan",
@@ -61,6 +64,7 @@ export default function HistoryScreen() {
   const { colors, isDark } = useTheme();
   const { activeUserId } = useUserProfile();
   const [period, setPeriod] = useState<PeriodTab>("day");
+  const [viewMode, setViewMode] = useState<HistoryViewMode>("wellness");
   const [selectedDate, setSelectedDate] = useState<Date>(new Date()); // Today's real date
   const [calendarVisible, setCalendarVisible] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -162,112 +166,204 @@ export default function HistoryScreen() {
         showsVerticalScrollIndicator={false}
         className="px-5"
       >
-        {/* Top Period Segmented Switcher (Day | Week | Month) */}
+        {/* Top-Level Mode Switcher: Personal Wellness vs Historical Charts */}
         <View
-          style={{
-            backgroundColor: colors.cardBg,
-            borderColor: colors.cardBorder,
-          }}
-          className="rounded-2xl p-1 border flex-row mb-4 shadow-xs"
-        >
-          {(["day", "week", "month"] as const).map((tab) => {
-            const isSelected = period === tab;
-            const labels = {
-              day: "Day",
-              week: "Week",
-              month: "Month",
-            };
-
-            return (
-              <TouchableOpacity
-                key={tab}
-                activeOpacity={0.8}
-                onPress={() => setPeriod(tab)}
-                style={
-                  isSelected
-                    ? {
-                        backgroundColor: colors.backgroundSecondary,
-                        borderColor: colors.cardBorder,
-                      }
-                    : undefined
-                }
-                className={`flex-1 py-2.5 rounded-xl items-center justify-center ${
-                  isSelected ? "shadow-sm border" : ""
-                }`}
-              >
-                <Text
-                  style={{
-                    color: isSelected ? colors.textPrimary : colors.textMuted,
-                  }}
-                  className="font-poppins-semibold text-xs"
-                >
-                  {labels[tab]}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        {/* Date Selector Row (< 23 May 2025 > [📅]) */}
-        <View className="flex-row items-center justify-between mb-5 px-1">
-          {/* Left Arrow */}
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={handlePrevDate}
-            style={{
-              backgroundColor: colors.cardBg,
+          style={[
+            styles.modeSwitcherContainer,
+            {
+              backgroundColor: isDark ? colors.backgroundSecondary : "#EEF2EF",
               borderColor: colors.cardBorder,
-            }}
-            className="w-9 h-9 rounded-full items-center justify-center border shadow-xs"
-          >
-            <ChevronLeftIcon size={16} color={colors.textPrimary} />
-          </TouchableOpacity>
-
-          {/* Date Label in Center (Tap opens calendar) */}
+            },
+          ]}
+        >
           <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => setCalendarVisible(true)}
-            className="py-1 px-3"
+            activeOpacity={0.8}
+            onPress={() => setViewMode("wellness")}
+            style={[
+              styles.modeSwitcherBtn,
+              viewMode === "wellness" && [
+                styles.modeSwitcherBtnActive,
+                {
+                  backgroundColor: colors.cardBg,
+                  borderColor: colors.cardBorder,
+                },
+              ],
+            ]}
           >
+            <View style={{ marginRight: 6 }}>
+              <LeafIcon
+                size={16}
+                color={viewMode === "wellness" ? "#16A34A" : colors.textMuted}
+              />
+            </View>
             <Text
-              style={{ color: colors.textPrimary }}
-              className="font-poppins-bold text-base text-center"
+              style={[
+                styles.modeSwitcherText,
+                {
+                  color: viewMode === "wellness" ? colors.textPrimary : colors.textMuted,
+                },
+              ]}
             >
-              {formattedDateLabel}
+              Personal Wellness
             </Text>
           </TouchableOpacity>
 
-          {/* Right Arrow & Calendar Filter Icon */}
-          <View className="flex-row items-center space-x-2">
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={handleNextDate}
-              style={{
-                backgroundColor: colors.cardBg,
-                borderColor: colors.cardBorder,
-              }}
-              className="w-9 h-9 rounded-full items-center justify-center border shadow-xs mr-2"
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => setViewMode("charts")}
+            style={[
+              styles.modeSwitcherBtn,
+              viewMode === "charts" && [
+                styles.modeSwitcherBtnActive,
+                {
+                  backgroundColor: colors.cardBg,
+                  borderColor: colors.cardBorder,
+                },
+              ],
+            ]}
+          >
+            <View style={{ marginRight: 6 }}>
+              <TrendChartIcon
+                size={16}
+                color={viewMode === "charts" ? "#4F46E5" : colors.textMuted}
+              />
+            </View>
+            <Text
+              style={[
+                styles.modeSwitcherText,
+                {
+                  color: viewMode === "charts" ? colors.textPrimary : colors.textMuted,
+                },
+              ]}
             >
-              <ChevronRightIcon size={16} color={colors.textPrimary} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => setCalendarVisible(true)}
-              style={{
-                backgroundColor: colors.cardBg,
-                borderColor: colors.cardBorder,
-              }}
-              className="w-9 h-9 rounded-full items-center justify-center border shadow-xs"
-            >
-              <CalendarDaysIcon size={18} color={colors.textPrimary} />
-            </TouchableOpacity>
-          </View>
+              Historical Charts
+            </Text>
+          </TouchableOpacity>
         </View>
 
-        {/* Single Vitals Trend Graph displaying all 6 metrics */}
-        <MultiMetricVitalsChart
-          points={dataset.points}
+        {/* 1. PERSONAL WELLNESS DASHBOARD VIEW */}
+        {viewMode === "wellness" ? (
+          <WellnessDashboard onSwitchToCharts={() => setViewMode("charts")} />
+        ) : (
+          /* 2. DETAILED HISTORICAL CHARTS VIEW */
+          <>
+            {/* Top Period Segmented Switcher (Day | Week | Month) */}
+            <View
+              style={[
+                styles.periodSwitcherContainer,
+                {
+                  backgroundColor: colors.cardBg,
+                  borderColor: colors.cardBorder,
+                },
+              ]}
+            >
+              {(["day", "week", "month"] as const).map((tab) => {
+                const isSelected = period === tab;
+                const labels = {
+                  day: "Day",
+                  week: "Week",
+                  month: "Month",
+                };
+
+                return (
+                  <TouchableOpacity
+                    key={tab}
+                    activeOpacity={0.8}
+                    onPress={() => setPeriod(tab)}
+                    style={[
+                      styles.periodBtn,
+                      isSelected && [
+                        styles.periodBtnActive,
+                        {
+                          backgroundColor: colors.backgroundSecondary,
+                          borderColor: colors.cardBorder,
+                        },
+                      ],
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.periodText,
+                        {
+                          color: isSelected ? colors.textPrimary : colors.textMuted,
+                        },
+                      ]}
+                    >
+                      {labels[tab]}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Date Selector Row (< 23 May 2025 > [📅]) */}
+            <View style={styles.dateNavRow}>
+              {/* Left Arrow */}
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={handlePrevDate}
+                style={[
+                  styles.navArrowBtn,
+                  {
+                    backgroundColor: colors.cardBg,
+                    borderColor: colors.cardBorder,
+                  },
+                ]}
+              >
+                <ChevronLeftIcon size={16} color={colors.textPrimary} />
+              </TouchableOpacity>
+
+              {/* Date Label in Center (Tap opens calendar) */}
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => setCalendarVisible(true)}
+                style={styles.dateLabelBtn}
+              >
+                <Text
+                  style={[
+                    styles.dateLabelText,
+                    { color: colors.textPrimary },
+                  ]}
+                >
+                  {formattedDateLabel}
+                </Text>
+              </TouchableOpacity>
+
+              {/* Right Arrow & Calendar Filter Icon */}
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={handleNextDate}
+                  style={[
+                    styles.navArrowBtn,
+                    {
+                      backgroundColor: colors.cardBg,
+                      borderColor: colors.cardBorder,
+                    },
+                  ]}
+                >
+                  <ChevronRightIcon size={16} color={colors.textPrimary} />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => setCalendarVisible(true)}
+                  style={[
+                    styles.navArrowBtn,
+                    {
+                      backgroundColor: colors.cardBg,
+                      borderColor: colors.cardBorder,
+                    },
+                  ]}
+                >
+                  <CalendarDaysIcon size={18} color={colors.textPrimary} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Single Vitals Trend Graph displaying all 6 metrics */}
+            <MultiMetricVitalsChart
+              points={dataset.points}
           xLabels={dataset.xLabels}
           summaries={dataset.summaries}
           height={210}
@@ -298,7 +394,9 @@ export default function HistoryScreen() {
             }}
             className="p-3.5 rounded-2xl border mb-3 flex-row items-center shadow-xs"
           >
-            <Text className="text-base mr-2.5">ℹ️</Text>
+            <View style={{ marginRight: 10 }}>
+              <InfoIcon size={18} color={colors.textMuted} />
+            </View>
             <Text
               style={{ color: colors.textMuted }}
               className="font-poppins-regular text-xs flex-1 leading-4"
@@ -394,6 +492,8 @@ export default function HistoryScreen() {
             );
           })}
         </View>
+        </>
+      )}
       </ScrollView>
 
       {/* Calendar Date Picker Modal */}
@@ -406,3 +506,92 @@ export default function HistoryScreen() {
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  modeSwitcherContainer: {
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 4,
+    flexDirection: "row",
+    marginBottom: 16,
+  },
+  modeSwitcherBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    borderRadius: 14,
+  },
+  modeSwitcherBtnActive: {
+    borderWidth: 1,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  modeSwitcherIcon: {
+    fontSize: 13,
+    marginRight: 6,
+  },
+  modeSwitcherText: {
+    fontFamily: "Poppins-SemiBold",
+    fontSize: 12,
+  },
+  periodSwitcherContainer: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 4,
+    flexDirection: "row",
+    marginBottom: 16,
+  },
+  periodBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  periodBtnActive: {
+    borderWidth: 1,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  periodText: {
+    fontFamily: "Poppins-SemiBold",
+    fontSize: 12,
+  },
+  dateNavRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 20,
+    paddingHorizontal: 4,
+  },
+  navArrowBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  dateLabelBtn: {
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+  },
+  dateLabelText: {
+    fontFamily: "Poppins-Bold",
+    fontSize: 16,
+    textAlign: "center",
+  },
+});

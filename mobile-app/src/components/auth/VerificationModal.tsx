@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from "react-native";
+import { MailIcon } from "../common/AppIcons";
 
 interface VerificationModalProps {
   visible: boolean;
@@ -155,7 +156,7 @@ export const VerificationModal: React.FC<VerificationModalProps> = ({
             {/* Email Verification Icon */}
             <View className="items-center -mt-2 mb-3">
               <View className="w-14 h-14 rounded-full bg-[#EBF5EE] items-center justify-center mb-3 border border-[#D5EBDE]">
-                <Text className="text-2xl">✉️</Text>
+                <MailIcon size={26} color="#16A34A" />
               </View>
               <Text className="font-poppins-bold text-2xl text-[#101C16] text-center">
                 Verify Your Email

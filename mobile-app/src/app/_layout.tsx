@@ -52,6 +52,10 @@ export default function RootLayout() {
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="connect-device" />
         <Stack.Screen name="onboarding-health" />
+        <Stack.Screen name="disaster-modes" />
+        <Stack.Screen name="caregiver-view" />
+        <Stack.Screen name="trust-privacy" />
+        <Stack.Screen name="asha-mode" />
         <Stack.Screen name="(tabs)" />
       </Stack>
     </ClerkProvider>

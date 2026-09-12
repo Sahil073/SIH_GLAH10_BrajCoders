@@ -10,6 +10,7 @@ import { View, Text, TouchableOpacity, ActivityIndicator, Alert } from "react-na
 import { useRawRecorder } from "@/hooks/useRawRecorder";
 import { useBle } from "@/ble";
 import { useTheme } from "@/store/themeStore";
+import { PlayIcon, StopIcon } from "./AppIcons";
 
 function formatSeconds(sec: number): string {
   const h = Math.floor(sec / 3600);
@@ -234,9 +235,16 @@ export function RawDataRecorderCard() {
           {isProcessing ? (
             <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
-            <Text className="font-poppins-semibold text-white text-xs tracking-wide">
-              {isRecording ? "⏹️ Stop Session & Save CSV" : "⏺️ Start Raw Recording Session"}
-            </Text>
+            <View className="flex-row items-center space-x-2">
+              {isRecording ? (
+                <StopIcon size={14} color="#FFFFFF" />
+              ) : (
+                <PlayIcon size={14} color="#FFFFFF" />
+              )}
+              <Text className="font-poppins-semibold text-white text-xs tracking-wide ml-1.5">
+                {isRecording ? "Stop Session & Save CSV" : "Start Raw Recording Session"}
+              </Text>
+            </View>
           )}
         </TouchableOpacity>
 
