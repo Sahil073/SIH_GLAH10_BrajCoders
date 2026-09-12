@@ -32,6 +32,7 @@ import { ShieldCheckIcon } from "@/components/dashboard/DashboardIcons";
 import { MetricDetailModal } from "@/components/dashboard/MetricDetailModal";
 import { AIRiskBanner } from "@/components/dashboard/AIRiskBanner";
 import { ESP32StatusCard } from "@/components/dashboard/ESP32StatusCard";
+import { RealtimeEcgMonitor } from "@/components/dashboard/RealtimeEcgMonitor";
 import { MetricType } from "@/types/dashboard";
 
 import { useTheme } from "@/store/themeStore";
@@ -57,6 +58,67 @@ export default function HomeScreen() {
     user?.fullName ||
     profile.name ||
     (isOfflineUser ? "Offline Worker" : activeUserId.split("@")[0]);
+
+  // Physiological Natural Color Themes for 6 Health Cards
+  const cardThemes = {
+    heart: {
+      bg: isDark ? "#1C0A0E" : "#FFF1F2",
+      border: isDark ? "#4C1523" : "#FECDD3",
+      text: isDark ? "#FECDD3" : "#9F1239",
+      sub: isDark ? "#FB7185" : "#E11D48",
+      iconBg: isDark ? "rgba(225,29,72,0.18)" : "#FFE4E6",
+      chartStroke: isDark ? "#FB7185" : "#E11D48",
+    },
+    spo2: {
+      bg: isDark ? "#081826" : "#F0F9FF",
+      border: isDark ? "#0E3A5D" : "#BAE6FD",
+      text: isDark ? "#BAE6FD" : "#0369A1",
+      sub: isDark ? "#38BDF8" : "#0284C7",
+      iconBg: isDark ? "rgba(2,132,199,0.18)" : "#E0F2FE",
+      chartUpper: isDark ? "#38BDF8" : "#0284C7",
+      chartLower: isDark ? "#0284C7" : "#7DD3FC",
+    },
+    aqi: {
+      bg: isDark ? "#081E1C" : "#F0FDFA",
+      border: isDark ? "#114640" : "#99F6E4",
+      text: isDark ? "#99F6E4" : "#0F766E",
+      sub: isDark ? "#2DD4BF" : "#0D9488",
+      iconBg: isDark ? "rgba(13,148,136,0.18)" : "#CCFBF1",
+      chartStroke: isDark ? "#2DD4BF" : "#0D9488",
+    },
+    temp: {
+      bg: isDark ? "#211508" : "#FFFBEB",
+      border: isDark ? "#54330F" : "#FDE68A",
+      text: isDark ? "#FDE68A" : "#92400E",
+      sub: isDark ? "#FBBF24" : "#D97706",
+      iconBg: isDark ? "rgba(217,119,6,0.18)" : "#FEF3C7",
+      chartStroke: isDark ? "#F97316" : "#EA580C",
+    },
+    moist: {
+      bg: isDark ? "#10142A" : "#EEF2FF",
+      border: isDark ? "#252E63" : "#C7D2FE",
+      text: isDark ? "#C7D2FE" : "#3730A3",
+      sub: isDark ? "#818CF8" : "#4F46E5",
+      iconBg: isDark ? "rgba(99,102,241,0.18)" : "#E0E7FF",
+      chartStroke: isDark ? "#818CF8" : "#6366F1",
+    },
+    activity: {
+      bg: isDark ? "#091F12" : "#F0FDF4",
+      border: isDark ? "#174928" : "#BBF7D0",
+      text: isDark ? "#BBF7D0" : "#166534",
+      sub: isDark ? "#4ADE80" : "#16A34A",
+      iconBg: isDark ? "rgba(22,163,74,0.18)" : "#DCFCE7",
+      trackColor: isDark ? "#163820" : "#DCFCE7",
+      fillColor: isDark ? "#22C55E" : "#16A34A",
+    },
+  };
+
+  const hasHrData = isConnected ? data.heartRate.value > 0 : hasHistoricalData && data.heartRate.value > 0;
+  const hasSpo2Data = isConnected ? data.spo2.value > 0 : hasHistoricalData && data.spo2.value > 0;
+  const hasAqiData = isConnected ? data.aqi.value > 0 : hasHistoricalData && data.aqi.value > 0;
+  const hasTempData = isConnected ? data.temperature.value > 0 : hasHistoricalData && data.temperature.value > 0;
+  const hasMoistData = isConnected ? data.moisture.value > 0 : hasHistoricalData && data.moisture.value > 0;
+  const hasStepData = isConnected ? data.activity.steps > 0 : hasHistoricalData && data.activity.steps > 0;
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
@@ -174,6 +236,9 @@ export default function HomeScreen() {
 
         {/* ESP32 Bluetooth Low Energy Connection Status & Telemetry Card */}
         <ESP32StatusCard hasHistoricalData={hasHistoricalData} />
+
+        {/* Enlarged Real-Time 500 Hz ECG Oscilloscope Monitor (BioAmp EXG Pill) */}
+        <RealtimeEcgMonitor />
 
         {/* Section: Overall Status (Interactive Modern Card matching design) */}
         <View className="px-6 mb-6">
@@ -388,7 +453,7 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Section: My health (6 Cards Grid with Dedicated Modern Graphs) */}
+        {/* Section: My health (6 Cards Grid with Dedicated Purpose-Driven Theming) */}
         <View className="px-6">
           <View className="flex-row items-center justify-between mb-3">
             <Text
@@ -414,25 +479,29 @@ export default function HomeScreen() {
           <View className="space-y-3.5">
             {/* Row 1: Heart Rate & SpO2 */}
             <View className="flex-row justify-between mb-3.5">
-              {/* Card 1: Heart Rate (Vibrant Lime) */}
+              {/* Card 1: Heart Rate (Cardiac Rose / Ruby) */}
               <TouchableOpacity
                 activeOpacity={0.88}
                 onPress={() => setActiveDetailMetric("heart_rate")}
-                className="flex-1 rounded-[26px] p-4 mr-2 justify-between"
-                style={[styles.cardShadow, { backgroundColor: colors.limeCard }]}
+                className="flex-1 rounded-[26px] p-4 mr-2 justify-between border"
+                style={[
+                  styles.cardShadow,
+                  {
+                    backgroundColor: cardThemes.heart.bg,
+                    borderColor: cardThemes.heart.border,
+                  },
+                ]}
               >
                 <View className="flex-row items-center mb-1 justify-between">
                   <View className="flex-row items-center">
                     <View
-                      style={{
-                        backgroundColor: isDark ? "rgba(0,0,0,0.18)" : "#FFFFFF",
-                      }}
+                      style={{ backgroundColor: cardThemes.heart.iconBg }}
                       className="w-7 h-7 rounded-full items-center justify-center mr-2 shadow-xs"
                     >
-                      <HeartPulseIcon size={15} color={colors.limeCardText} />
+                      <HeartPulseIcon size={15} color={cardThemes.heart.sub} />
                     </View>
                     <Text
-                      style={{ color: colors.limeCardText }}
+                      style={{ color: cardThemes.heart.text }}
                       className="font-poppins-semibold text-[13px]"
                     >
                       Heart rate
@@ -441,8 +510,8 @@ export default function HomeScreen() {
                   {!isConnected && hasHistoricalData && (
                     <Text
                       style={{
-                        color: colors.limeCardSub,
-                        backgroundColor: isDark ? "rgba(0,0,0,0.2)" : "#C5E138",
+                        color: cardThemes.heart.sub,
+                        backgroundColor: cardThemes.heart.iconBg,
                       }}
                       className="font-poppins-medium text-[9px] px-1.5 py-0.5 rounded-md"
                     >
@@ -455,19 +524,20 @@ export default function HomeScreen() {
                   <PulseWaveChart
                     values={data.heartRate.history.map((h) => h.value)}
                     height={42}
-                    strokeColor={colors.limeCardText}
+                    strokeColor={cardThemes.heart.chartStroke}
+                    hasData={hasHrData}
                   />
                 </View>
 
                 <View className="flex-row items-baseline mt-1">
                   <Text
-                    style={{ color: colors.limeCardText }}
+                    style={{ color: cardThemes.heart.text }}
                     className="font-poppins-bold text-[24px] leading-none"
                   >
-                    {data.heartRate.value > 0 ? data.heartRate.value : "--"}
+                    {hasHrData ? data.heartRate.value : "--"}
                   </Text>
                   <Text
-                    style={{ color: colors.limeCardSub }}
+                    style={{ color: cardThemes.heart.sub }}
                     className="font-poppins-semibold text-[11px] ml-1.5 uppercase"
                   >
                     {data.heartRate.unit}
@@ -475,7 +545,7 @@ export default function HomeScreen() {
                 </View>
               </TouchableOpacity>
 
-              {/* Card 2: SpO2 (Warm Sand) */}
+              {/* Card 2: SpO2 (Oxygen Sky Blue) */}
               <TouchableOpacity
                 activeOpacity={0.88}
                 onPress={() => setActiveDetailMetric("spo2")}
@@ -483,21 +553,21 @@ export default function HomeScreen() {
                 style={[
                   styles.cardShadow,
                   {
-                    backgroundColor: colors.sandCard,
-                    borderColor: colors.cardBorder,
+                    backgroundColor: cardThemes.spo2.bg,
+                    borderColor: cardThemes.spo2.border,
                   },
                 ]}
               >
                 <View className="flex-row items-center mb-1 justify-between">
                   <View className="flex-row items-center">
                     <View
-                      style={{ backgroundColor: colors.backgroundSecondary }}
+                      style={{ backgroundColor: cardThemes.spo2.iconBg }}
                       className="w-7 h-7 rounded-full items-center justify-center mr-2 shadow-xs"
                     >
-                      <DropletIcon size={15} color={colors.sandCardText} />
+                      <DropletIcon size={15} color={cardThemes.spo2.sub} />
                     </View>
                     <Text
-                      style={{ color: colors.sandCardText }}
+                      style={{ color: cardThemes.spo2.text }}
                       className="font-poppins-semibold text-[13px]"
                     >
                       SpO₂
@@ -506,8 +576,8 @@ export default function HomeScreen() {
                   {!isConnected && hasHistoricalData && (
                     <Text
                       style={{
-                        color: colors.sandCardSub,
-                        backgroundColor: colors.backgroundSecondary,
+                        color: cardThemes.spo2.sub,
+                        backgroundColor: cardThemes.spo2.iconBg,
                       }}
                       className="font-poppins-medium text-[9px] px-1.5 py-0.5 rounded-md"
                     >
@@ -521,19 +591,21 @@ export default function HomeScreen() {
                     upperValues={data.spo2.history.map((h) => h.value)}
                     lowerValues={data.spo2.history.map((h) => Math.max(0, h.value - 10))}
                     height={42}
-                    upperStroke={colors.sandCardText}
+                    upperStroke={cardThemes.spo2.chartUpper}
+                    lowerStroke={cardThemes.spo2.chartLower}
+                    hasData={hasSpo2Data}
                   />
                 </View>
 
                 <View className="flex-row items-baseline mt-1">
                   <Text
-                    style={{ color: colors.sandCardText }}
+                    style={{ color: cardThemes.spo2.text }}
                     className="font-poppins-bold text-[24px] leading-none"
                   >
-                    {data.spo2.value > 0 ? data.spo2.value : "--"}
+                    {hasSpo2Data ? data.spo2.value : "--"}
                   </Text>
                   <Text
-                    style={{ color: colors.sandCardSub }}
+                    style={{ color: cardThemes.spo2.sub }}
                     className="font-poppins-medium text-[12px] ml-1"
                   >
                     {data.spo2.unit}
@@ -544,7 +616,7 @@ export default function HomeScreen() {
 
             {/* Row 2: AQI & Temperature */}
             <View className="flex-row justify-between mb-3.5">
-              {/* Card 3: AQI (Warm Sand) */}
+              {/* Card 3: AQI (Atmospheric Mint Teal) */}
               <TouchableOpacity
                 activeOpacity={0.88}
                 onPress={() => setActiveDetailMetric("aqi")}
@@ -552,21 +624,21 @@ export default function HomeScreen() {
                 style={[
                   styles.cardShadow,
                   {
-                    backgroundColor: colors.sandCard,
-                    borderColor: colors.cardBorder,
+                    backgroundColor: cardThemes.aqi.bg,
+                    borderColor: cardThemes.aqi.border,
                   },
                 ]}
               >
                 <View className="flex-row items-center mb-1 justify-between">
                   <View className="flex-row items-center">
                     <View
-                      style={{ backgroundColor: colors.backgroundSecondary }}
+                      style={{ backgroundColor: cardThemes.aqi.iconBg }}
                       className="w-7 h-7 rounded-full items-center justify-center mr-2 shadow-xs"
                     >
-                      <CloudIcon size={15} color={colors.sandCardText} />
+                      <CloudIcon size={15} color={cardThemes.aqi.sub} />
                     </View>
                     <Text
-                      style={{ color: colors.sandCardText }}
+                      style={{ color: cardThemes.aqi.text }}
                       className="font-poppins-semibold text-[13px]"
                     >
                       AQI
@@ -575,8 +647,8 @@ export default function HomeScreen() {
                   {!isConnected && hasHistoricalData && (
                     <Text
                       style={{
-                        color: colors.sandCardSub,
-                        backgroundColor: colors.backgroundSecondary,
+                        color: cardThemes.aqi.sub,
+                        backgroundColor: cardThemes.aqi.iconBg,
                       }}
                       className="font-poppins-medium text-[9px] px-1.5 py-0.5 rounded-md"
                     >
@@ -589,46 +661,51 @@ export default function HomeScreen() {
                   <SmoothTrendWaveChart
                     values={data.aqi.history}
                     height={42}
-                    strokeColor={colors.sandCardText}
+                    strokeColor={cardThemes.aqi.chartStroke}
                     strokeWidth={2.2}
+                    hasData={hasAqiData}
                   />
                 </View>
 
                 <View className="flex-row items-baseline mt-1">
                   <Text
-                    style={{ color: colors.sandCardText }}
+                    style={{ color: cardThemes.aqi.text }}
                     className="font-poppins-bold text-[24px] leading-none"
                   >
-                    {data.aqi.value > 0 ? data.aqi.value : "--"}
+                    {hasAqiData ? data.aqi.value : "--"}
                   </Text>
                   <Text
-                    style={{ color: colors.sandCardSub }}
+                    style={{ color: cardThemes.aqi.sub }}
                     className="font-poppins-medium text-[12px] ml-1.5"
                   >
-                    {data.aqi.statusLabel}
+                    {hasAqiData ? data.aqi.statusLabel : "--"}
                   </Text>
                 </View>
               </TouchableOpacity>
 
-              {/* Card 4: Temperature (Vibrant Lime) */}
+              {/* Card 4: Temperature (Warm Amber / Coral) */}
               <TouchableOpacity
                 activeOpacity={0.88}
                 onPress={() => setActiveDetailMetric("temperature")}
-                className="flex-1 rounded-[26px] p-4 ml-2 justify-between"
-                style={[styles.cardShadow, { backgroundColor: colors.limeCard }]}
+                className="flex-1 rounded-[26px] p-4 ml-2 justify-between border"
+                style={[
+                  styles.cardShadow,
+                  {
+                    backgroundColor: cardThemes.temp.bg,
+                    borderColor: cardThemes.temp.border,
+                  },
+                ]}
               >
                 <View className="flex-row items-center mb-1 justify-between">
                   <View className="flex-row items-center">
                     <View
-                      style={{
-                        backgroundColor: isDark ? "rgba(0,0,0,0.18)" : "#FFFFFF",
-                      }}
+                      style={{ backgroundColor: cardThemes.temp.iconBg }}
                       className="w-7 h-7 rounded-full items-center justify-center mr-2 shadow-xs"
                     >
-                      <ThermometerIcon size={15} color={colors.limeCardText} />
+                      <ThermometerIcon size={15} color={cardThemes.temp.sub} />
                     </View>
                     <Text
-                      style={{ color: colors.limeCardText }}
+                      style={{ color: cardThemes.temp.text }}
                       className="font-poppins-semibold text-[13px]"
                     >
                       Temperature
@@ -637,8 +714,8 @@ export default function HomeScreen() {
                   {!isConnected && hasHistoricalData && (
                     <Text
                       style={{
-                        color: colors.limeCardSub,
-                        backgroundColor: isDark ? "rgba(0,0,0,0.2)" : "#C5E138",
+                        color: cardThemes.temp.sub,
+                        backgroundColor: cardThemes.temp.iconBg,
                       }}
                       className="font-poppins-medium text-[9px] px-1.5 py-0.5 rounded-md"
                     >
@@ -651,21 +728,22 @@ export default function HomeScreen() {
                   <SmoothTrendWaveChart
                     values={data.temperature.history}
                     height={42}
-                    strokeColor={colors.limeCardText}
+                    strokeColor={cardThemes.temp.chartStroke}
                     strokeWidth={2.2}
                     showDots={data.temperature.history.length >= 3}
+                    hasData={hasTempData}
                   />
                 </View>
 
                 <View className="flex-row items-baseline mt-1">
                   <Text
-                    style={{ color: colors.limeCardText }}
+                    style={{ color: cardThemes.temp.text }}
                     className="font-poppins-bold text-[24px] leading-none"
                   >
-                    {data.temperature.value > 0 ? data.temperature.value : "--"}
+                    {hasTempData ? data.temperature.value : "--"}
                   </Text>
                   <Text
-                    style={{ color: colors.limeCardSub }}
+                    style={{ color: cardThemes.temp.sub }}
                     className="font-poppins-semibold text-[12px] ml-1"
                   >
                     {data.temperature.unit}
@@ -676,25 +754,29 @@ export default function HomeScreen() {
 
             {/* Row 3: Moisture & Step Activity */}
             <View className="flex-row justify-between">
-              {/* Card 5: Moisture (Vibrant Lime) */}
+              {/* Card 5: Moisture (Hydro Indigo) */}
               <TouchableOpacity
                 activeOpacity={0.88}
                 onPress={() => setActiveDetailMetric("moisture")}
-                className="flex-1 rounded-[26px] p-4 mr-2 justify-between"
-                style={[styles.cardShadow, { backgroundColor: colors.limeCard }]}
+                className="flex-1 rounded-[26px] p-4 mr-2 justify-between border"
+                style={[
+                  styles.cardShadow,
+                  {
+                    backgroundColor: cardThemes.moist.bg,
+                    borderColor: cardThemes.moist.border,
+                  },
+                ]}
               >
                 <View className="flex-row items-center mb-1 justify-between">
                   <View className="flex-row items-center">
                     <View
-                      style={{
-                        backgroundColor: isDark ? "rgba(0,0,0,0.18)" : "#FFFFFF",
-                      }}
+                      style={{ backgroundColor: cardThemes.moist.iconBg }}
                       className="w-7 h-7 rounded-full items-center justify-center mr-2 shadow-xs"
                     >
-                      <MoistureIcon size={15} color={colors.limeCardText} />
+                      <MoistureIcon size={15} color={cardThemes.moist.sub} />
                     </View>
                     <Text
-                      style={{ color: colors.limeCardText }}
+                      style={{ color: cardThemes.moist.text }}
                       className="font-poppins-semibold text-[13px]"
                     >
                       Moisture
@@ -703,8 +785,8 @@ export default function HomeScreen() {
                   {!isConnected && hasHistoricalData && (
                     <Text
                       style={{
-                        color: colors.limeCardSub,
-                        backgroundColor: isDark ? "rgba(0,0,0,0.2)" : "#C5E138",
+                        color: cardThemes.moist.sub,
+                        backgroundColor: cardThemes.moist.iconBg,
                       }}
                       className="font-poppins-medium text-[9px] px-1.5 py-0.5 rounded-md"
                     >
@@ -717,28 +799,29 @@ export default function HomeScreen() {
                   <SmoothTrendWaveChart
                     values={data.moisture.history}
                     height={42}
-                    strokeColor={colors.limeCardText}
+                    strokeColor={cardThemes.moist.chartStroke}
                     strokeWidth={2.2}
+                    hasData={hasMoistData}
                   />
                 </View>
 
                 <View className="flex-row items-baseline mt-1">
                   <Text
-                    style={{ color: colors.limeCardText }}
+                    style={{ color: cardThemes.moist.text }}
                     className="font-poppins-bold text-[24px] leading-none"
                   >
-                    {data.moisture.value > 0 ? `${data.moisture.value}${data.moisture.unit}` : "--"}
+                    {hasMoistData ? `${data.moisture.value}${data.moisture.unit}` : "--"}
                   </Text>
                   <Text
-                    style={{ color: colors.limeCardSub }}
+                    style={{ color: cardThemes.moist.sub }}
                     className="font-poppins-semibold text-[11px] ml-1.5"
                   >
-                    {data.moisture.statusLabel}
+                    {hasMoistData ? data.moisture.statusLabel : "--"}
                   </Text>
                 </View>
               </TouchableOpacity>
 
-              {/* Card 6: Step Activity (Warm Sand) */}
+              {/* Card 6: Step Activity (Vitality Emerald) */}
               <TouchableOpacity
                 activeOpacity={0.88}
                 onPress={() => setActiveDetailMetric("activity")}
@@ -746,21 +829,21 @@ export default function HomeScreen() {
                 style={[
                   styles.cardShadow,
                   {
-                    backgroundColor: colors.sandCard,
-                    borderColor: colors.cardBorder,
+                    backgroundColor: cardThemes.activity.bg,
+                    borderColor: cardThemes.activity.border,
                   },
                 ]}
               >
                 <View className="flex-row items-center mb-1 justify-between">
                   <View className="flex-row items-center">
                     <View
-                      style={{ backgroundColor: colors.backgroundSecondary }}
+                      style={{ backgroundColor: cardThemes.activity.iconBg }}
                       className="w-7 h-7 rounded-full items-center justify-center mr-2 shadow-xs"
                     >
-                      <WalkingPersonIcon size={15} color={colors.sandCardText} />
+                      <WalkingPersonIcon size={15} color={cardThemes.activity.sub} />
                     </View>
                     <Text
-                      style={{ color: colors.sandCardText }}
+                      style={{ color: cardThemes.activity.text }}
                       className="font-poppins-semibold text-[13px]"
                     >
                       Activity
@@ -769,8 +852,8 @@ export default function HomeScreen() {
                   {!isConnected && hasHistoricalData && (
                     <Text
                       style={{
-                        color: colors.sandCardSub,
-                        backgroundColor: colors.backgroundSecondary,
+                        color: cardThemes.activity.sub,
+                        backgroundColor: cardThemes.activity.iconBg,
                       }}
                       className="font-poppins-medium text-[9px] px-1.5 py-0.5 rounded-md"
                     >
@@ -783,20 +866,21 @@ export default function HomeScreen() {
                   <PillBarChart
                     bars={data.activity.weeklyBars}
                     height={44}
-                    trackColor={isDark ? "#2A3630" : "#DDD9D1"}
-                    fillColor={colors.sandCardText}
+                    trackColor={cardThemes.activity.trackColor}
+                    fillColor={cardThemes.activity.fillColor}
+                    hasData={hasStepData}
                   />
                 </View>
 
                 <View className="flex-row items-baseline mt-1">
                   <Text
-                    style={{ color: colors.sandCardText }}
+                    style={{ color: cardThemes.activity.text }}
                     className="font-poppins-bold text-[22px] leading-none"
                   >
-                    {data.activity.steps > 0 ? data.activity.steps.toLocaleString() : "--"}
+                    {hasStepData ? data.activity.steps.toLocaleString() : "--"}
                   </Text>
                   <Text
-                    style={{ color: colors.sandCardSub }}
+                    style={{ color: cardThemes.activity.sub }}
                     className="font-poppins-medium text-[12px] ml-1.5"
                   >
                     {data.activity.unit}

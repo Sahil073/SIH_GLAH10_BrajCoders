@@ -162,71 +162,91 @@ export function AIRiskBanner() {
         </View>
       )}
 
-      {/* Main AI Health Assessment Card */}
+      {/* Main Highlighted AI Health Assessment Card */}
       <View
         style={{
-          backgroundColor: colors.cardBg,
-          borderColor: colors.cardBorder,
+          backgroundColor: isDark ? "#121824" : "#F0F5FF",
+          borderColor: isDark ? "#283E66" : "#BFDBFE",
+          borderWidth: 1.5,
+          shadowColor: "#3B82F6",
+          shadowOffset: { width: 0, height: 3 },
+          shadowOpacity: isDark ? 0.25 : 0.12,
+          shadowRadius: 10,
+          elevation: 3,
         }}
-        className="rounded-2xl p-4 border shadow-xs"
+        className="rounded-[26px] p-4 mb-1"
       >
-        {/* Header Row */}
-        <View
-          style={{ borderColor: colors.divider }}
-          className="flex-row items-center justify-between pb-3 border-b"
-        >
+        {/* Top Intelligence Header Row */}
+        <View className="flex-row items-center justify-between pb-3 border-b border-blue-200/50 dark:border-blue-900/50">
           <View className="flex-row items-center gap-2">
-            <View
-              className={`w-2.5 h-2.5 rounded-full ${
-                isConnected ? "bg-emerald-500 animate-pulse" : "bg-amber-400"
-              }`}
-            />
-            <Text
-              style={{ color: colors.textPrimary }}
-              className="font-poppins-bold text-xs tracking-wide uppercase"
-            >
-              On-Device AI Engine
-            </Text>
+            <View className="w-7 h-7 rounded-xl bg-blue-600 items-center justify-center shadow-xs">
+              <Text className="text-xs">🧠</Text>
+            </View>
+            <View>
+              <View className="flex-row items-center">
+                <Text
+                  style={{ color: isDark ? "#93C5FD" : "#1E40AF" }}
+                  className="font-poppins-bold text-xs tracking-wider uppercase"
+                >
+                  Sanjeevni Edge AI
+                </Text>
+                <View className="ml-1.5 bg-blue-500/15 px-1.5 py-0.5 rounded-md border border-blue-400/30">
+                  <Text className="font-poppins-bold text-[8.5px] text-blue-600 dark:text-blue-300">
+                    DSP ACTIVE
+                  </Text>
+                </View>
+              </View>
+              <Text className="font-poppins-regular text-[10.5px] text-blue-900/70 dark:text-blue-200/60">
+                Pan-Tompkins • Sensor Fusion • Gate Verified
+              </Text>
+            </View>
           </View>
 
           <TouchableOpacity
             activeOpacity={0.7}
             onPress={() => setShowDiagnostics(true)}
-            style={{ backgroundColor: colors.backgroundSecondary }}
-            className="flex-row items-center gap-1.5 px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-800"
+            className="flex-row items-center gap-1 px-2.5 py-1 rounded-full bg-white dark:bg-blue-950 border border-blue-200 dark:border-blue-800 shadow-xs"
           >
             <Text
-              style={{ color: isConnected ? "#16A34A" : colors.textMuted }}
+              style={{ color: isConnected ? "#2563EB" : colors.textMuted }}
               className="font-poppins-semibold text-[10.5px]"
             >
-              {narrative.tag} • Diagnostics ›
+              Inspection ›
             </Text>
           </TouchableOpacity>
         </View>
 
-        {/* Live AI Thinking Box */}
+        {/* Highlighted AI Finding & Real-Time Reasoning Box */}
         <View
           style={{
-            backgroundColor: isDark ? colors.backgroundSecondary : "#F7FAF8",
-            borderColor: isDark ? "#283830" : "#DDECE2",
+            backgroundColor: isDark ? "#172236" : "#FFFFFF",
+            borderColor: isDark ? "#283C60" : "#DBEAFE",
           }}
-          className="mt-3 p-3 rounded-xl border flex-row items-start"
+          className="mt-3 p-3.5 rounded-2xl border shadow-xs"
         >
-          <Text className="text-base mr-2 mt-0.5">🧠</Text>
-          <View className="flex-1">
-            <Text
-              style={{ color: colors.textPrimary }}
-              className="font-poppins-semibold text-xs mb-0.5"
-            >
-              {narrative.headline}
-            </Text>
-            <Text
-              style={{ color: colors.textSecondary }}
-              className="font-poppins-regular text-[11px] leading-[17px]"
-            >
-              {narrative.description}
-            </Text>
+          <View className="flex-row items-center justify-between mb-1">
+            <View className="flex-row items-center">
+              <View className="w-2 h-2 rounded-full bg-blue-500 mr-2 animate-pulse" />
+              <Text
+                style={{ color: isDark ? "#E0E7FF" : "#1E3A8A" }}
+                className="font-poppins-bold text-[13px]"
+              >
+                {narrative.headline}
+              </Text>
+            </View>
+            <View className="bg-emerald-500/15 px-2 py-0.5 rounded-full">
+              <Text className="font-poppins-semibold text-[9.5px] text-emerald-600 dark:text-emerald-400">
+                {isConnected ? "Live Reading" : "Calibrated"}
+              </Text>
+            </View>
           </View>
+
+          <Text
+            style={{ color: isDark ? "#CBD5E1" : "#334155" }}
+            className="font-poppins-regular text-[11.5px] leading-[18px] mt-0.5"
+          >
+            {narrative.description}
+          </Text>
         </View>
 
         {/* 4 Risk Badges Grid */}

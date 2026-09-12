@@ -67,6 +67,10 @@ export function useDashboardData() {
   const stepCountRef = useRef<number>(0);
   const lastStepTimeRef = useRef<number>(0);
 
+  // Fixed interval throttle (2000ms) for secondary sensor card updates
+  const lastSecondaryUpdateRef = useRef<number>(0);
+  const SECONDARY_INTERVAL_MS = 2000;
+
   // When disconnected or user changes, fetch real historical session averages from SQLite scoped to active user
   useEffect(() => {
     if (isConnected) return;
@@ -141,11 +145,24 @@ export function useDashboardData() {
     };
   }, [isConnected, activeUserId]);
 
-  // Update dashboard reactively ONLY when BLE is connected
+  // Update dashboard reactively ONLY when BLE is connected, throttled to 2-second fixed intervals
   useEffect(() => {
     if (!isConnected) {
       return;
     }
+
+    const nowMs = Date.now();
+    const isEmergency = Boolean(ai.sosRecommended || ai.risks.fall.detected);
+    const shouldUpdate =
+      isEmergency ||
+      lastSecondaryUpdateRef.current === 0 ||
+      nowMs - lastSecondaryUpdateRef.current >= SECONDARY_INTERVAL_MS;
+
+    if (!shouldUpdate) {
+      return;
+    }
+
+    lastSecondaryUpdateRef.current = nowMs;
 
 
     setData((prev) => {

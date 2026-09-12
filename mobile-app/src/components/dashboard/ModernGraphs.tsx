@@ -1,7 +1,65 @@
 import React from "react";
-import { View } from "react-native";
+import { View, Text, StyleSheet } from "react-native";
 import Svg, { Path, Circle, Rect, Line } from "react-native-svg";
 import { WeeklyBarPoint } from "@/types/dashboard";
+
+/**
+ * Modern placeholder shown inside health cards when no telemetry or historical data exists.
+ * Displays a subtle reference baseline and an elegant 'Not enough data' status pill.
+ */
+export function EmptyChartPlaceholder({
+  height = 42,
+  textColor,
+  message = "Not enough data",
+}: {
+  height?: number;
+  textColor?: string;
+  message?: string;
+}) {
+  return (
+    <View
+      style={{ height, width: "100%", justifyContent: "center", alignItems: "center" }}
+    >
+      <Svg
+        width="100%"
+        height={height}
+        viewBox="0 0 140 42"
+        preserveAspectRatio="none"
+        style={StyleSheet.absoluteFill}
+      >
+        <Line
+          x1={4}
+          y1={21}
+          x2={136}
+          y2={21}
+          stroke={textColor || "#9E9B94"}
+          strokeOpacity={0.2}
+          strokeWidth={1.2}
+          strokeDasharray="4 4"
+        />
+      </Svg>
+      <View
+        style={{
+          backgroundColor: textColor ? `${textColor}15` : "rgba(0,0,0,0.05)",
+          paddingHorizontal: 7,
+          paddingVertical: 2,
+          borderRadius: 6,
+        }}
+      >
+        <Text
+          style={{
+            color: textColor || "#8A867D",
+            fontSize: 9.5,
+            fontWeight: "600",
+            letterSpacing: 0.2,
+          }}
+        >
+          {message}
+        </Text>
+      </View>
+    </View>
+  );
+}
 
 /**
  * Calculates a smooth cubic bezier SVG path from coordinate points.
@@ -48,7 +106,7 @@ function createSplinePath(points: { x: number; y: number }[]): string {
 
 /**
  * Dual Wave Chart for Blood Pressure / SpO2 Card
- * Shows two undulating smooth curves or neutral dashed baselines if data is empty.
+ * Shows two undulating smooth curves or an empty indicator when data is absent.
  */
 export function DualWaveChart({
   upperValues = [],
@@ -56,12 +114,14 @@ export function DualWaveChart({
   height = 42,
   upperStroke = "#161616",
   lowerStroke = "#9E9B94",
+  hasData,
 }: {
   upperValues?: number[];
   lowerValues?: number[];
   height?: number;
   upperStroke?: string;
   lowerStroke?: string;
+  hasData?: boolean;
 }) {
   const chartWidth = 140;
   const paddingX = 4;
@@ -73,6 +133,19 @@ export function DualWaveChart({
   const validLower = lowerValues.filter(
     (v): v is number => typeof v === "number" && Number.isFinite(v)
   );
+
+  const dataPresent =
+    hasData !== undefined ? hasData : validUpper.length >= 2;
+
+  if (!dataPresent) {
+    return (
+      <EmptyChartPlaceholder
+        height={height}
+        textColor={upperStroke}
+        message="Not enough data"
+      />
+    );
+  }
 
   const hasUpper = validUpper.length >= 2;
   const hasLower = validLower.length >= 2;
@@ -113,8 +186,8 @@ export function DualWaveChart({
         viewBox={`0 0 ${chartWidth} ${height}`}
         preserveAspectRatio="none"
       >
-        {/* Secondary lower wave or neutral dashed baseline */}
-        {hasLower ? (
+        {/* Secondary lower wave */}
+        {hasLower && (
           <Path
             d={lowerPath}
             fill="none"
@@ -123,20 +196,10 @@ export function DualWaveChart({
             strokeLinecap="round"
             strokeLinejoin="round"
           />
-        ) : (
-          <Line
-            x1={paddingX}
-            y1={height * 0.7}
-            x2={chartWidth - paddingX}
-            y2={height * 0.7}
-            stroke="#C4C0B6"
-            strokeWidth={1.5}
-            strokeDasharray="4 4"
-          />
         )}
 
-        {/* Primary upper wave or neutral dashed baseline */}
-        {hasUpper ? (
+        {/* Primary upper wave */}
+        {hasUpper && (
           <Path
             d={upperPath}
             fill="none"
@@ -144,16 +207,6 @@ export function DualWaveChart({
             strokeWidth={2.2}
             strokeLinecap="round"
             strokeLinejoin="round"
-          />
-        ) : (
-          <Line
-            x1={paddingX}
-            y1={height * 0.35}
-            x2={chartWidth - paddingX}
-            y2={height * 0.35}
-            stroke="#8A867D"
-            strokeWidth={1.8}
-            strokeDasharray="4 4"
           />
         )}
       </Svg>
@@ -163,18 +216,20 @@ export function DualWaveChart({
 
 /**
  * Pulse Wave Chart for Heart Rate Card
- * Crisp black pulse wave across the card, or calm baseline if waiting for signal.
+ * Crisp pulse wave across the card, or empty indicator if waiting for signal.
  */
 export function PulseWaveChart({
   values = [],
   height = 42,
   strokeColor = "#161616",
   baselineColor = "#5C6624",
+  hasData,
 }: {
   values?: number[];
   height?: number;
   strokeColor?: string;
   baselineColor?: string;
+  hasData?: boolean;
 }) {
   const chartWidth = 140;
   const paddingX = 4;
@@ -184,23 +239,31 @@ export function PulseWaveChart({
     (v): v is number => typeof v === "number" && Number.isFinite(v)
   );
 
-  const hasData = validValues.length >= 2;
+  const dataPresent =
+    hasData !== undefined ? hasData : validValues.length >= 2;
 
-  let path = "";
-  if (hasData) {
-    const min = Math.min(...validValues);
-    const max = Math.max(...validValues);
-    const range = max - min || 1;
-
-    const points = validValues.map((val, idx) => {
-      const x = paddingX + (idx / (validValues.length - 1)) * usableWidth;
-      const norm = (val - min) / range;
-      const y = height - 5 - norm * (height - 10);
-      return { x, y };
-    });
-
-    path = createSplinePath(points);
+  if (!dataPresent) {
+    return (
+      <EmptyChartPlaceholder
+        height={height}
+        textColor={strokeColor}
+        message="Not enough data"
+      />
+    );
   }
+
+  const min = Math.min(...validValues);
+  const max = Math.max(...validValues);
+  const range = max - min || 1;
+
+  const points = validValues.map((val, idx) => {
+    const x = paddingX + (idx / (validValues.length - 1)) * usableWidth;
+    const norm = (val - min) / range;
+    const y = height - 5 - norm * (height - 10);
+    return { x, y };
+  });
+
+  const path = createSplinePath(points);
 
   return (
     <View style={{ height, width: "100%" }}>
@@ -210,26 +273,14 @@ export function PulseWaveChart({
         viewBox={`0 0 ${chartWidth} ${height}`}
         preserveAspectRatio="none"
       >
-        {hasData ? (
-          <Path
-            d={path}
-            fill="none"
-            stroke={strokeColor}
-            strokeWidth={2.2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        ) : (
-          <Line
-            x1={paddingX}
-            y1={height / 2}
-            x2={chartWidth - paddingX}
-            y2={height / 2}
-            stroke={baselineColor}
-            strokeWidth={1.8}
-            strokeDasharray="5 4"
-          />
-        )}
+        <Path
+          d={path}
+          fill="none"
+          stroke={strokeColor}
+          strokeWidth={2.2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </Svg>
     </View>
   );
@@ -237,19 +288,36 @@ export function PulseWaveChart({
 
 /**
  * 7-Day Pill Bar Chart for Sleep / Activity Card
- * 7 vertical capsules with two-tone fill matching app_ui.jpg
+ * 7 vertical capsules with two-tone fill matching app_ui.jpg,
+ * or empty state placeholder if no steps/activity recorded yet.
  */
 export function PillBarChart({
   bars = [],
   height = 44,
   trackColor = "#BBD839",
   fillColor = "#161616",
+  hasData,
 }: {
   bars?: WeeklyBarPoint[];
   height?: number;
   trackColor?: string;
   fillColor?: string;
+  hasData?: boolean;
 }) {
+  const hasActiveValues = bars && bars.some((b) => b.value > 0);
+  const dataPresent =
+    hasData !== undefined ? hasData : Boolean(hasActiveValues);
+
+  if (!dataPresent) {
+    return (
+      <EmptyChartPlaceholder
+        height={height}
+        textColor={fillColor}
+        message="Not enough data"
+      />
+    );
+  }
+
   const displayBars =
     bars.length > 0
       ? bars
@@ -369,7 +437,7 @@ export function DonutArcChart({
 
 /**
  * Smooth Trend Wave Chart for Temperature, AQI, Moisture, etc.
- * Renders smooth spline curve or neutral dashed line when empty.
+ * Renders smooth spline curve or empty indicator when data is absent.
  */
 export function SmoothTrendWaveChart({
   values = [],
@@ -378,6 +446,7 @@ export function SmoothTrendWaveChart({
   strokeWidth = 2.2,
   showDots = false,
   dotRadius = 2.5,
+  hasData,
 }: {
   values?: number[];
   height?: number;
@@ -385,6 +454,7 @@ export function SmoothTrendWaveChart({
   strokeWidth?: number;
   showDots?: boolean;
   dotRadius?: number;
+  hasData?: boolean;
 }) {
   const chartWidth = 140;
   const paddingX = 4;
@@ -394,25 +464,31 @@ export function SmoothTrendWaveChart({
     (v): v is number => typeof v === "number" && Number.isFinite(v)
   );
 
-  const hasData = validValues.length >= 2;
+  const dataPresent =
+    hasData !== undefined ? hasData : validValues.length >= 2;
 
-  let points: { x: number; y: number }[] = [];
-  let path = "";
-
-  if (hasData) {
-    const min = Math.min(...validValues);
-    const max = Math.max(...validValues);
-    const range = max - min || 1;
-
-    points = validValues.map((val, idx) => {
-      const x = paddingX + (idx / (validValues.length - 1)) * usableWidth;
-      const norm = (val - min) / range;
-      const y = height - 6 - norm * (height - 12);
-      return { x, y };
-    });
-
-    path = createSplinePath(points);
+  if (!dataPresent) {
+    return (
+      <EmptyChartPlaceholder
+        height={height}
+        textColor={strokeColor}
+        message="Not enough data"
+      />
+    );
   }
+
+  const min = Math.min(...validValues);
+  const max = Math.max(...validValues);
+  const range = max - min || 1;
+
+  const points = validValues.map((val, idx) => {
+    const x = paddingX + (idx / (validValues.length - 1)) * usableWidth;
+    const norm = (val - min) / range;
+    const y = height - 6 - norm * (height - 12);
+    return { x, y };
+  });
+
+  const path = createSplinePath(points);
 
   return (
     <View style={{ height, width: "100%" }}>
@@ -422,42 +498,28 @@ export function SmoothTrendWaveChart({
         viewBox={`0 0 ${chartWidth} ${height}`}
         preserveAspectRatio="none"
       >
-        {hasData ? (
-          <>
-            <Path
-              d={path}
-              fill="none"
-              stroke={strokeColor}
-              strokeWidth={strokeWidth}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            {showDots &&
-              [0, Math.floor(points.length / 2), points.length - 1].map((idx) => {
-                const pt = points[idx];
-                if (!pt) return null;
-                return (
-                  <Circle
-                    key={`pt-${idx}`}
-                    cx={pt.x}
-                    cy={pt.y}
-                    r={dotRadius}
-                    fill={strokeColor}
-                  />
-                );
-              })}
-          </>
-        ) : (
-          <Line
-            x1={paddingX}
-            y1={height / 2}
-            x2={chartWidth - paddingX}
-            y2={height / 2}
-            stroke="#9E9B94"
-            strokeWidth={1.8}
-            strokeDasharray="4 4"
-          />
-        )}
+        <Path
+          d={path}
+          fill="none"
+          stroke={strokeColor}
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        {showDots &&
+          [0, Math.floor(points.length / 2), points.length - 1].map((idx) => {
+            const pt = points[idx];
+            if (!pt) return null;
+            return (
+              <Circle
+                key={`pt-${idx}`}
+                cx={pt.x}
+                cy={pt.y}
+                r={dotRadius}
+                fill={strokeColor}
+              />
+            );
+          })}
       </Svg>
     </View>
   );
