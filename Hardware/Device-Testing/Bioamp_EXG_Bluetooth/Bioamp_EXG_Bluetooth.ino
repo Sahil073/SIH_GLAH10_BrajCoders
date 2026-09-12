@@ -2,56 +2,52 @@
 // Bioamp_EXG_Bluetooth.ino
 //
 // PURPOSE:
-//   Combines the BioAmp EXG Pill raw ADC acquisition with Bluetooth Low Energy
-//   (BLE) transmission. Reads raw biopotential samples and streams them to a
-//   connected BLE client (e.g. mobile app or PC terminal) as plain text.
+//   Combines the BioAmp EXG Pill raw biopotential acquisition with Bluetooth
+//   Low Energy (BLE) transmission using the EXACT JSON protocol (v1, Sensor ID 1)
+//   expected by the Sanjeevni mobile app and identical to ESP32_Sensor_Hub.ino.
 //
 //   Use this sketch to:
-//     1. Verify end-to-end data flow from EXG Pill → ESP32 → BLE → phone/PC.
-//     2. Observe live EXG waveforms on an Android/iOS BLE terminal app.
-//     3. Validate BLE throughput and latency before full hub integration.
+//     1. Verify end-to-end 500 Hz cardiac / biopotential stream from EXG Pill
+//        through ESP32 BLE to the mobile app's Real-Time ECG Oscilloscope.
+//     2. Observe live QRS complexes, BPM estimation, and SQI calculation.
+//     3. Test non-blocking 500 Hz micros() sampling and safe 128-byte BLE chunking.
 //
 // SENSOR:
 //   BioAmp EXG Pill (by Upside Down Labs)
-//   Instrumentation-amplifier front-end for biopotential signals (EMG/ECG/EOG).
-//   Output is an analog voltage proportional to the electrode differential.
-//   This sketch reads the raw 12-bit ADC value (0–4095).
+//   Instrumentation-amplifier front-end for biopotential signals (ECG/EMG/EOG).
+//   Output is an analog biopotential signal centered around VCC/2 (~1.65 V).
+//   Acquires at 500 Hz (2000 us interval) with 12-bit ADC (0–4095 range).
 //
 // BOARD:
 //   Classic ESP32 (ESP32-WROOM / DevKit V1), ESP32-S3, ESP32-C3 — Arduino framework
-//
-// LIBRARIES:
-//   BLEDevice, BLEServer, BLEUtils, BLE2902 — ESP32 Arduino core (built-in)
-//
-// BLE DEVICE NAME:
-//   "ESP32_EXG_BLE"
 //
 // WIRING:
 //   EXG Pill OUT  →  GPIO 34  (input-only ADC pin, ADC1_CH6)
 //   EXG Pill VCC  →  3.3 V
 //   EXG Pill GND  →  GND
+//   Electrodes: RA (Right Arm / red), LA (Left Arm / yellow), RL (Right Leg / black)
+//
+// BLE DEVICE NAME:
+//   "ESP32_SENSOR_HUB_BLE" (recognized immediately by Sanjeevni mobile app)
 //
 // GATT PROFILE (Nordic UART Service - NUS):
 //   Service UUID : 6E400001-B5A3-F393-E0A9-E50E24DCCA9E
 //   TX Char UUID : 6E400003-B5A3-F393-E0A9-E50E24DCCA9E (Notify — ESP32 -> Client)
 //   RX Char UUID : 6E400002-B5A3-F393-E0A9-E50E24DCCA9E (Write  — Client -> ESP32)
 //
-// DATA FORMAT (plain text, comma-separated, one sample per line):
-//   EXG,<raw_adc_value>
+// PROTOCOL SPECIFICATION (Protocol v1 JSON, newline-delimited):
+//   {"v":1,"sensor":1,"seq":<seq>,"ts":<uptime_ms>,"rate":500,"samples":[s0,s1,...,s127]}\n
 //
-//   Example output stream over BLE:
-//     EXG,2048
-//     EXG,2051
-//     EXG,2046
+//   Example packet (as seen in sample_data.txt):
+//     {"v":1,"sensor":1,"seq":705,"ts":181482,"rate":500,"samples":[1470,1453,1424,1387,...]}
 //
-// SAMPLING RATE:
-//   ~100 Hz  (one sample per 10 ms delay)
-//   The production integration (ESP32_Sensor_Hub.ino) achieves 500 Hz
-//   using a non-blocking micros()-based scheduler.
+// SAMPLING & TRANSMISSION:
+//   Sampling rate: 500 Hz (micros()-based scheduler, 2000 us interval)
+//   Buffer size: 128 samples (~256 ms per packet batch, ~3.9 packets/sec)
+//   Transmission: Chunked into 128-byte BLE notification slices for safe delivery
 //
 // USB SERIAL:
-//   Baud rate : 115200
-//   Every sample value is also printed locally for monitoring.
+//   Baud rate: 115200 baud
 // =============================================================================
 
 #include <Arduino.h>
@@ -61,14 +57,18 @@
 #include <BLE2902.h>
 
 // ============================================================
-// CONFIGURATION
+// CONFIGURATION & CONSTANTS
 // ============================================================
 #define EXG_PIN 34
+
+static const uint16_t EXG_SAMPLE_RATE_HZ = 500;
+static const uint16_t EXG_BUFFER_SIZE    = 128;
+static const uint32_t EXG_INTERVAL_US    = 1000000UL / EXG_SAMPLE_RATE_HZ; // 2000 us
 
 // ============================================================
 // BLE CONFIGURATION & NORDIC UART UUIDs
 // ============================================================
-#define DEVICE_NAME "ESP32_EXG_BLE"
+#define DEVICE_NAME "ESP32_SENSOR_HUB_BLE"
 #define SERVICE_UUID           "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
 #define CHARACTERISTIC_UUID_RX "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
 #define CHARACTERISTIC_UUID_TX "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
@@ -81,18 +81,24 @@ BLECharacteristic *pTxCharacteristic = nullptr;
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
 
+// 128-sample biopotential ring buffer
+uint16_t exgBuffer[EXG_BUFFER_SIZE];
+uint16_t exgBufferIndex = 0;
+uint32_t exgLastMicros = 0;
+uint32_t exgSequence = 0;
+
 class MyServerCallbacks : public BLEServerCallbacks
 {
     void onConnect(BLEServer *pServer) override
     {
         deviceConnected = true;
-        Serial.println("[BLE] Client connected");
+        Serial.println("[BLE] Mobile client connected!");
     }
 
     void onDisconnect(BLEServer *pServer) override
     {
         deviceConnected = false;
-        Serial.println("[BLE] Client disconnected");
+        Serial.println("[BLE] Mobile client disconnected!");
     }
 };
 
@@ -103,15 +109,33 @@ void setupEXG()
 {
     pinMode(EXG_PIN, INPUT);
     analogReadResolution(12);
-    Serial.println("[EXG] Pill initialized on GPIO 34 (12-bit ADC)");
+    exgLastMicros = micros();
+    exgBufferIndex = 0;
+    Serial.println("[EXG] BioAmp Pill initialized on GPIO 34 (12-bit ADC @ 500 Hz)");
 }
 
 // ============================================================
-// READ EXG
+// READ EXG (500 Hz micros()-based acquisition)
+// Returns true ONLY when the 128-sample buffer is complete
 // ============================================================
-int readEXG()
+bool readEXG()
 {
-    return analogRead(EXG_PIN);
+    uint32_t now = micros();
+
+    if ((now - exgLastMicros) < EXG_INTERVAL_US)
+        return false;
+
+    // Advance reference by fixed interval to eliminate clock drift accumulation
+    exgLastMicros += EXG_INTERVAL_US;
+
+    exgBuffer[exgBufferIndex++] = (uint16_t)analogRead(EXG_PIN);
+
+    if (exgBufferIndex >= EXG_BUFFER_SIZE)
+    {
+        exgBufferIndex = 0;
+        return true;
+    }
+    return false;
 }
 
 // ============================================================
@@ -147,20 +171,63 @@ void setupBLE()
     pAdvertising->setMinPreferred(0x12);
     BLEDevice::startAdvertising();
 
-    Serial.printf("[BLE] Advertising started as '%s'\n", DEVICE_NAME);
+    Serial.printf("[BLE] GATT Server advertising as '%s'\n", DEVICE_NAME);
 }
 
 // ============================================================
-// SEND EXG DATA OVER BLE
+// SEND EXG PACKET (Matching ESP32_Sensor_Hub.ino)
+// Protocol: {"v":1,"sensor":1,"seq":<seq>,"ts":<ms>,"rate":500,"samples":[...]}\n
+// Uses safe 128-byte chunking for robust transmission over BLE.
 // ============================================================
-void sendBLE(int exgValue)
+void sendEXGPacket()
 {
-    if (!deviceConnected)
-        return;
+    // Build JSON packet manually to avoid heap fragmentation
+    String output;
+    output.reserve(1600);
 
-    String payload = "EXG," + String(exgValue) + "\n";
-    pTxCharacteristic->setValue((uint8_t *)payload.c_str(), payload.length());
-    pTxCharacteristic->notify();
+    output += "{\"v\":1,\"sensor\":1,\"seq\":";
+    output += String(exgSequence++);
+    output += ",\"ts\":";
+    output += String(millis());
+    output += ",\"rate\":500,\"samples\":[";
+
+    for (uint16_t i = 0; i < EXG_BUFFER_SIZE; i++)
+    {
+        output += String(exgBuffer[i]);
+        if (i < EXG_BUFFER_SIZE - 1)
+            output += ',';
+    }
+    output += "]}\n";
+
+    // Transmit over BLE notifications in safe 128-byte slices
+    if (deviceConnected)
+    {
+        const uint8_t *data = (const uint8_t *)output.c_str();
+        size_t len = output.length();
+        size_t offset = 0;
+        const size_t maxChunk = 128;
+
+        while (offset < len)
+        {
+            size_t chunk = len - offset;
+            if (chunk > maxChunk)
+                chunk = maxChunk;
+
+            pTxCharacteristic->setValue((uint8_t *)(data + offset), chunk);
+            pTxCharacteristic->notify();
+            offset += chunk;
+
+            if (offset < len)
+            {
+                delay(2); // Yield between slices to prevent ring buffer overflow
+            }
+        }
+    }
+
+    // Local serial summary
+    Serial.printf("[EXG] Sent batch seq=%lu | samples=128 | BLE=%s\n",
+                  (unsigned long)(exgSequence - 1),
+                  deviceConnected ? "OK" : "STANDBY");
 }
 
 // ============================================================
@@ -172,9 +239,10 @@ void setup()
     delay(1000);
 
     Serial.println();
-    Serial.println("==============================");
-    Serial.println("ESP32 BioAmp EXG BLE Test");
-    Serial.println("==============================");
+    Serial.println("==================================================");
+    Serial.println("  Sanjeevni ESP32 BioAmp EXG BLE Component Test   ");
+    Serial.println("  Protocol v1 (Sensor ID 1) — 500 Hz QRS Stream   ");
+    Serial.println("==================================================");
 
     setupEXG();
     setupBLE();
@@ -185,13 +253,12 @@ void setup()
 // ============================================================
 void loop()
 {
-    int exgValue = readEXG();
-
-    // Print to USB Serial Plotter/Monitor
-    Serial.printf("EXG: %d\n", exgValue);
-
-    // Stream over BLE
-    sendBLE(exgValue);
+    // High-precision 500 Hz acquisition
+    if (readEXG())
+    {
+        // When 128 samples are buffered, transmit full packet batch
+        sendEXGPacket();
+    }
 
     // Auto-restart advertising on client disconnection
     if (!deviceConnected && oldDeviceConnected)
@@ -205,7 +272,4 @@ void loop()
     {
         oldDeviceConnected = deviceConnected;
     }
-
-    // ~100 Hz loop rate (10 ms delay)
-    delay(10);
 }

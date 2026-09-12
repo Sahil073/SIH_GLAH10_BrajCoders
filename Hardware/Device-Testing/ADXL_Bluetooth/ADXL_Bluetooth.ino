@@ -3,14 +3,16 @@
 //
 // PURPOSE:
 //   Tests the ADXL345 3-axis accelerometer over I2C and streams live
-//   acceleration data to a connected Bluetooth Low Energy (BLE) client.
+//   acceleration data to a connected Bluetooth Low Energy (BLE) client
+//   using the EXACT JSON protocol (v1, Sensor ID 2) expected by the
+//   Sanjeevni mobile app and identical to ESP32_Sensor_Hub.ino.
 //
 //   Use this sketch to:
 //     1. Confirm the ADXL345 is correctly wired to I2C (SDA=21, SCL=22).
 //     2. Verify that the Adafruit ADXL345 library initialises the sensor.
 //     3. Observe X / Y / Z acceleration values in real time on the USB
-//        Serial Monitor and via a mobile BLE terminal app.
-//     4. Validate sensor readings before integration into the full hub.
+//        Serial Monitor and via the Sanjeevni mobile app over BLE.
+//     4. Validate sensor readings and BLE transmission before full integration.
 //
 // SENSOR:
 //   ADXL345 — 3-axis digital accelerometer (Analog Devices)
@@ -22,12 +24,6 @@
 // BOARD:
 //   Classic ESP32 (ESP32-WROOM / DevKit V1), ESP32-S3, ESP32-C3 — Arduino framework
 //
-// LIBRARIES:
-//   Wire              — I2C driver (ESP32 Arduino core)
-//   Adafruit_Sensor   — Unified sensor abstraction layer
-//   Adafruit_ADXL345_U — ADXL345 driver
-//   BLEDevice, BLEServer, BLEUtils, BLE2902 — ESP32 Arduino core (built-in)
-//
 // WIRING:
 //   ADXL345 VCC  →  3.3 V
 //   ADXL345 GND  →  GND
@@ -37,29 +33,25 @@
 //   ADXL345 CS   →  3.3 V (selects I2C mode)
 //
 // BLE DEVICE NAME:
-//   "ESP32_ADXL_BLE"
+//   "ESP32_SENSOR_HUB_BLE" (recognized immediately by Sanjeevni mobile app)
 //
 // GATT PROFILE (Nordic UART Service - NUS):
 //   Service UUID : 6E400001-B5A3-F393-E0A9-E50E24DCCA9E
 //   TX Char UUID : 6E400003-B5A3-F393-E0A9-E50E24DCCA9E (Notify — ESP32 -> Client)
 //   RX Char UUID : 6E400002-B5A3-F393-E0A9-E50E24DCCA9E (Write  — Client -> ESP32)
 //
-// DATA FORMAT (plain text, comma-separated, one reading per line):
-//   ADXL345,<x>,<y>,<z>
+// PROTOCOL SPECIFICATION (Protocol v1 JSON, newline-delimited):
+//   {"v":1,"sensor":2,"seq":<seq>,"ts":<uptime_ms>,"data":{"x":<x>,"y":<y>,"z":<z>}}\n
 //
-//   Where x, y, z are floating-point acceleration values in m/s²,
-//   printed to 3 decimal places.
+//   Example packet (as seen in sample_data.txt):
+//     {"v":1,"sensor":2,"seq":4518,"ts":181483,"data":{"x":1.65,"y":-3.61,"z":-11.02}}
 //
-//   Example output stream over BLE:
-//     ADXL345,0.234,-0.156,9.812
-//     ADXL345,0.230,-0.160,9.808
-//
-// SAMPLING RATE:
-//   ~10 Hz  (one reading per 100 ms delay)
+// SAMPLING & TRANSMISSION:
+//   Acquisition rate: ~100 Hz (every 10 ms)
+//   BLE transmission rate: 25 Hz (every 40 ms, matching ESP32_Sensor_Hub.ino)
 //
 // USB SERIAL:
-//   Baud rate : 115200
-//   Mirrors all accelerometer readings for local monitoring.
+//   Baud rate: 115200 baud
 // =============================================================================
 
 #include <Arduino.h>
@@ -78,9 +70,15 @@
 #define SCL_PIN 22
 
 // ============================================================
+// TIMING CONSTANTS (matching ESP32_Sensor_Hub.ino)
+// ============================================================
+static const uint32_t ADXL_ACQ_INTERVAL_MS = 10; // 100 Hz acquisition
+static const uint32_t ADXL_TX_INTERVAL_MS  = 40; // 25 Hz BLE transmission
+
+// ============================================================
 // BLE CONFIGURATION & NORDIC UART UUIDs
 // ============================================================
-#define DEVICE_NAME "ESP32_ADXL_BLE"
+#define DEVICE_NAME "ESP32_SENSOR_HUB_BLE"
 #define SERVICE_UUID           "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
 #define CHARACTERISTIC_UUID_RX "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
 #define CHARACTERISTIC_UUID_TX "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
@@ -95,19 +93,25 @@ BLECharacteristic *pTxCharacteristic = nullptr;
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
 
+// Sequence tracking and state
+uint32_t adxlSequence = 0;
+uint32_t adxlLastAcqMs = 0;
+uint32_t adxlLastTxMs = 0;
+float adxlX = 0.0f, adxlY = 0.0f, adxlZ = 0.0f;
+
 // Server callbacks to detect client connection and disconnection
 class MyServerCallbacks : public BLEServerCallbacks
 {
     void onConnect(BLEServer *pServer) override
     {
         deviceConnected = true;
-        Serial.println("[BLE] Client connected");
+        Serial.println("[BLE] Mobile client connected!");
     }
 
     void onDisconnect(BLEServer *pServer) override
     {
         deviceConnected = false;
-        Serial.println("[BLE] Client disconnected");
+        Serial.println("[BLE] Mobile client disconnected!");
     }
 };
 
@@ -120,31 +124,36 @@ bool setupADXL345()
 
     if (!adxl.begin())
     {
-        Serial.println("[ADXL345] Sensor not detected! Check wiring.");
+        Serial.println("[ADXL345] ERROR: Sensor not detected! Check SDA/SCL wiring and pull-ups.");
         return false;
     }
 
     adxl.setRange(ADXL345_RANGE_2_G);
-    Serial.println("[ADXL345] Initialized successfully (Range: ±2G)");
+    Serial.println("[ADXL345] Initialized successfully (Range: ±2G, SDA=21, SCL=22)");
     return true;
 }
 
 // ============================================================
-// READ ADXL345
+// READ ADXL345 (100 Hz acquisition)
 // ============================================================
-bool readADXL345(float &x, float &y, float &z)
+bool readADXL345()
 {
+    uint32_t now = millis();
+    if ((now - adxlLastAcqMs) < ADXL_ACQ_INTERVAL_MS)
+        return false;
+    adxlLastAcqMs = now;
+
     sensors_event_t event;
     adxl.getEvent(&event);
 
-    x = event.acceleration.x;
-    y = event.acceleration.y;
-    z = event.acceleration.z;
+    adxlX = event.acceleration.x;
+    adxlY = event.acceleration.y;
+    adxlZ = event.acceleration.z;
     return true;
 }
 
 // ============================================================
-// SETUP BLE
+// SETUP BLE (Nordic UART Service)
 // ============================================================
 void setupBLE()
 {
@@ -176,21 +185,36 @@ void setupBLE()
     pAdvertising->setMinPreferred(0x12);
     BLEDevice::startAdvertising();
 
-    Serial.printf("[BLE] Advertising started as '%s'\n", DEVICE_NAME);
+    Serial.printf("[BLE] GATT Server advertising as '%s'\n", DEVICE_NAME);
 }
 
 // ============================================================
-// SEND DATA OVER BLE
+// SEND ADXL345 JSON PACKET (Matching ESP32_Sensor_Hub.ino)
+// Protocol: {"v":1,"sensor":2,"seq":<seq>,"ts":<ms>,"data":{"x":<x>,"y":<y>,"z":<z>}}\n
 // ============================================================
-void sendBLE(float x, float y, float z)
+void sendADXLPacket()
 {
-    if (!deviceConnected)
+    uint32_t now = millis();
+    if ((now - adxlLastTxMs) < ADXL_TX_INTERVAL_MS)
         return;
+    adxlLastTxMs = now;
 
-    // Plain-text CSV packet: ADXL345,<x>,<y>,<z>\n
-    String payload = "ADXL345," + String(x, 3) + "," + String(y, 3) + "," + String(z, 3) + "\n";
-    pTxCharacteristic->setValue((uint8_t *)payload.c_str(), payload.length());
-    pTxCharacteristic->notify();
+    // Build JSON packet matching Protocol v1, SensorId::ADXL345 (2)
+    char payload[192];
+    snprintf(payload, sizeof(payload),
+             "{\"v\":1,\"sensor\":2,\"seq\":%lu,\"ts\":%lu,\"data\":{\"x\":%.2f,\"y\":%.2f,\"z\":%.2f}}\n",
+             (unsigned long)adxlSequence++,
+             (unsigned long)now,
+             adxlX, adxlY, adxlZ);
+
+    if (deviceConnected)
+    {
+        pTxCharacteristic->setValue((uint8_t *)payload, strlen(payload));
+        pTxCharacteristic->notify();
+    }
+
+    // Local serial monitor display
+    Serial.print(payload);
 }
 
 // ============================================================
@@ -202,9 +226,10 @@ void setup()
     delay(1000);
 
     Serial.println();
-    Serial.println("==============================");
-    Serial.println("ESP32 ADXL345 BLE Test");
-    Serial.println("==============================");
+    Serial.println("================================================");
+    Serial.println("  Sanjeevni ESP32 ADXL345 BLE Component Test    ");
+    Serial.println("  Protocol v1 (Sensor ID 2) — 25 Hz JSON Stream ");
+    Serial.println("================================================");
 
     if (!setupADXL345())
     {
@@ -220,18 +245,14 @@ void setup()
 // ============================================================
 void loop()
 {
-    float x = 0.0f, y = 0.0f, z = 0.0f;
-
-    if (readADXL345(x, y, z))
+    // 100 Hz acquisition
+    if (readADXL345())
     {
-        // Local USB debug output
-        Serial.printf("X: %7.3f  Y: %7.3f  Z: %7.3f m/s^2\n", x, y, z);
-
-        // Send over BLE
-        sendBLE(x, y, z);
+        // 25 Hz transmission in standard JSON format
+        sendADXLPacket();
     }
 
-    // Auto-restart advertising if disconnected
+    // Auto-restart advertising on client disconnection
     if (!deviceConnected && oldDeviceConnected)
     {
         delay(500);
@@ -244,6 +265,6 @@ void loop()
         oldDeviceConnected = deviceConnected;
     }
 
-    // ~10 Hz acquisition rate
-    delay(100);
+    // Small yield to allow BLE stack processing
+    delay(2);
 }

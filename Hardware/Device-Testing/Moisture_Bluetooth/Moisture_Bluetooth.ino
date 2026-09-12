@@ -2,51 +2,51 @@
 // Moisture_Bluetooth.ino
 //
 // PURPOSE:
-//   Tests the capacitive or resistive soil moisture sensor and streams raw
-//   ADC readings to a connected Bluetooth Low Energy (BLE) client.
+//   Tests the conductive / capacitive sweat and moisture sensor and streams
+//   10-sample averaged raw ADC readings to a connected Bluetooth Low Energy (BLE)
+//   client using the EXACT JSON protocol (v1, Sensor ID 5) expected by the
+//   Sanjeevni mobile app and identical to ESP32_Sensor_Hub.ino.
 //
 //   Use this sketch to:
-//     1. Confirm the soil moisture sensor is correctly wired to the ADC pin.
-//     2. Observe how ADC values change between dry and wet soil conditions.
-//     3. Validate BLE data flow before integration into the full hub.
-//     4. Determine a practical ADC range for your specific sensor module.
+//     1. Confirm the moisture/sweat electrode is correctly wired to GPIO 32.
+//     2. Observe how ADC values change between dry and damp/sweat conditions.
+//     3. Observe live hydration updates on the Sanjeevni app's Moisture card.
+//     4. Validate BLE data flow before full sensor hub integration.
 //
 // SENSOR:
-//   Soil Moisture Sensor (capacitive or resistive module)
+//   Conductive / capacitive sweat & moisture sensor (embedded in smart garment)
 //   Interface : Analog voltage output (AO pin)
-//   ADC output: 0 – 4095 (12-bit raw; calibration depends on module type)
+//   ADC output: 0 – 4095 (12-bit raw ADC; converted to 0–100% moisture in app)
 //
 // BOARD:
 //   Classic ESP32 (ESP32-WROOM / DevKit V1), ESP32-S3, ESP32-C3 — Arduino framework
 //
-// LIBRARIES:
-//   BLEDevice, BLEServer, BLEUtils, BLE2902 — ESP32 Arduino core (built-in)
-//
 // WIRING:
 //   Sensor VCC  →  3.3 V
 //   Sensor GND  →  GND
-//   Sensor AO   →  GPIO 34  (input-only ADC1 pin; note: hub uses GPIO 32)
+//   Sensor AO   →  GPIO 32  (input/output capable ADC1 pin, matching ESP32_Sensor_Hub.ino)
 //
 // BLE DEVICE NAME:
-//   "ESP32_SOIL_BLE"
+//   "ESP32_SENSOR_HUB_BLE" (recognized immediately by Sanjeevni mobile app)
 //
 // GATT PROFILE (Nordic UART Service - NUS):
 //   Service UUID : 6E400001-B5A3-F393-E0A9-E50E24DCCA9E
 //   TX Char UUID : 6E400003-B5A3-F393-E0A9-E50E24DCCA9E (Notify — ESP32 -> Client)
 //   RX Char UUID : 6E400002-B5A3-F393-E0A9-E50E24DCCA9E (Write  — Client -> ESP32)
 //
-// DATA FORMAT (plain text, comma-separated, one value per line):
-//   SOIL,<raw_adc_value>
+// PROTOCOL SPECIFICATION (Protocol v1 JSON, newline-delimited):
+//   {"v":1,"sensor":5,"seq":<seq>,"ts":<uptime_ms>,"data":{"raw":<raw_adc>}}\n
 //
-//   Example output stream over BLE:
-//     SOIL,1842
-//     SOIL,1856
+//   Example packet (as seen in sample_data.txt line 41):
+//     {"v":1,"sensor":5,"seq":90,"ts":182752,"data":{"raw":4095}}
 //
-// SAMPLING RATE:
-//   1 Hz  (one reading every 1000 ms — controlled by delay(1000))
+// SAMPLING & TRANSMISSION:
+//   Acquisition rate: 10 Hz (every 100 ms)
+//   Averaging window: 10 samples
+//   BLE transmission rate: 0.5 Hz (every 2000 ms)
 //
 // USB SERIAL:
-//   Baud rate : 115200
+//   Baud rate: 115200 baud
 // =============================================================================
 
 #include <Arduino.h>
@@ -55,63 +55,92 @@
 #include <BLEUtils.h>
 #include <BLE2902.h>
 
-// --------------------------------------------------
-// Pin configuration
-// --------------------------------------------------
-#define SOIL_MOISTURE_PIN 34 // GPIO 34 (Note: full integration hub uses GPIO 32)
+// ============================================================
+// PIN CONFIGURATION & CONSTANTS
+// ============================================================
+#define SOIL_MOISTURE_PIN 32 // GPIO 32 (matching ESP32_Sensor_Hub.ino and Sanjeevni PCB)
 
-// --------------------------------------------------
-// BLE Configuration & Nordic UART UUIDs
-// --------------------------------------------------
-#define DEVICE_NAME "ESP32_SOIL_BLE"
+static const uint32_t SOIL_ACQ_INTERVAL_MS = 100;  // 10 Hz acquisition
+static const uint32_t SOIL_TX_INTERVAL_MS  = 2000; // 0.5 Hz BLE transmission
+static const uint8_t  SOIL_AVG_SAMPLES     = 10;   // 10-sample averaging window
+
+// ============================================================
+// BLE CONFIGURATION & NORDIC UART UUIDs
+// ============================================================
+#define DEVICE_NAME "ESP32_SENSOR_HUB_BLE"
 #define SERVICE_UUID           "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
 #define CHARACTERISTIC_UUID_RX "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
 #define CHARACTERISTIC_UUID_TX "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
 
-// --------------------------------------------------
-// Global Objects & State
-// --------------------------------------------------
+// ============================================================
+// GLOBAL OBJECTS & STATE
+// ============================================================
 BLEServer *pServer = nullptr;
 BLECharacteristic *pTxCharacteristic = nullptr;
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
+
+uint32_t soilSequence = 0;
+uint32_t soilLastAcqMs = 0;
+uint32_t soilLastTxMs = 0;
+uint32_t soilAccumRaw = 0;
+uint8_t  soilSampleCnt = 0;
+uint32_t soilAvgRaw = 0;
 
 class MyServerCallbacks : public BLEServerCallbacks
 {
     void onConnect(BLEServer *pServer) override
     {
         deviceConnected = true;
-        Serial.println("[BLE] Client connected");
+        Serial.println("[BLE] Mobile client connected!");
     }
 
     void onDisconnect(BLEServer *pServer) override
     {
         deviceConnected = false;
-        Serial.println("[BLE] Client disconnected");
+        Serial.println("[BLE] Mobile client disconnected!");
     }
 };
 
-// --------------------------------------------------
-// Setup Soil Moisture
-// --------------------------------------------------
+// ============================================================
+// SETUP SOIL MOISTURE
+// ============================================================
 void setupSoilMoisture()
 {
+    analogSetPinAttenuation(SOIL_MOISTURE_PIN, ADC_11db); // 0–3.3 V full range
     pinMode(SOIL_MOISTURE_PIN, INPUT);
-    analogReadResolution(12);
-    Serial.println("[SOIL] Initialized on GPIO 34 (12-bit ADC)");
+    soilLastAcqMs = millis();
+    soilLastTxMs = millis();
+    Serial.println("[SOIL] Initialized on GPIO 32 (10 Hz acq / 0.5 Hz BLE)");
 }
 
-// --------------------------------------------------
-// Read Soil Moisture
-// --------------------------------------------------
-int readSoilMoisture()
+// ============================================================
+// READ & AVERAGE SOIL MOISTURE (10 Hz acq, averages 10 samples)
+// Returns true ONLY when an averaged reading is ready
+// ============================================================
+bool readSoilMoisture()
 {
-    return analogRead(SOIL_MOISTURE_PIN);
+    uint32_t now = millis();
+    if ((now - soilLastAcqMs) < SOIL_ACQ_INTERVAL_MS)
+        return false;
+    soilLastAcqMs = now;
+
+    soilAccumRaw += (uint32_t)analogRead(SOIL_MOISTURE_PIN);
+    soilSampleCnt++;
+
+    if (soilSampleCnt >= SOIL_AVG_SAMPLES)
+    {
+        soilAvgRaw = soilAccumRaw / (uint32_t)SOIL_AVG_SAMPLES;
+        soilAccumRaw = 0;
+        soilSampleCnt = 0;
+        return true;
+    }
+    return false;
 }
 
-// --------------------------------------------------
-// Setup BLE
-// --------------------------------------------------
+// ============================================================
+// SETUP BLE
+// ============================================================
 void setupBLE()
 {
     BLEDevice::init(DEVICE_NAME);
@@ -142,48 +171,64 @@ void setupBLE()
     pAdvertising->setMinPreferred(0x12);
     BLEDevice::startAdvertising();
 
-    Serial.printf("[BLE] Advertising started as '%s'\n", DEVICE_NAME);
+    Serial.printf("[BLE] GATT Server advertising as '%s'\n", DEVICE_NAME);
 }
 
-// --------------------------------------------------
-// Send Data over BLE
-// --------------------------------------------------
-void sendBLE(int rawVal)
+// ============================================================
+// SEND SOIL MOISTURE PACKET (Matching ESP32_Sensor_Hub.ino)
+// Protocol: {"v":1,"sensor":5,"seq":<seq>,"ts":<ms>,"data":{"raw":<raw>}}\n
+// ============================================================
+void sendSoilMoisturePacket()
 {
-    if (!deviceConnected)
+    uint32_t now = millis();
+    if ((now - soilLastTxMs) < SOIL_TX_INTERVAL_MS)
         return;
+    soilLastTxMs = now;
 
-    String payload = "SOIL," + String(rawVal) + "\n";
-    pTxCharacteristic->setValue((uint8_t *)payload.c_str(), payload.length());
-    pTxCharacteristic->notify();
+    char payload[160];
+    snprintf(payload, sizeof(payload),
+             "{\"v\":1,\"sensor\":5,\"seq\":%lu,\"ts\":%lu,\"data\":{\"raw\":%lu}}\n",
+             (unsigned long)soilSequence++,
+             (unsigned long)now,
+             (unsigned long)soilAvgRaw);
+
+    if (deviceConnected)
+    {
+        pTxCharacteristic->setValue((uint8_t *)payload, strlen(payload));
+        pTxCharacteristic->notify();
+    }
+
+    // Local serial display
+    Serial.print(payload);
 }
 
-// --------------------------------------------------
-// Setup
-// --------------------------------------------------
+// ============================================================
+// SETUP
+// ============================================================
 void setup()
 {
     Serial.begin(115200);
     delay(1000);
 
     Serial.println();
-    Serial.println("==============================");
-    Serial.println("ESP32 Soil Moisture BLE Test");
-    Serial.println("==============================");
+    Serial.println("==================================================");
+    Serial.println("  Sanjeevni ESP32 Moisture BLE Component Test     ");
+    Serial.println("  Protocol v1 (Sensor ID 5) — 0.5 Hz JSON Stream  ");
+    Serial.println("==================================================");
 
     setupSoilMoisture();
     setupBLE();
 }
 
-// --------------------------------------------------
-// Loop
-// --------------------------------------------------
+// ============================================================
+// LOOP
+// ============================================================
 void loop()
 {
-    int rawValue = readSoilMoisture();
-
-    Serial.printf("Soil moisture raw ADC: %d\n", rawValue);
-    sendBLE(rawValue);
+    if (readSoilMoisture())
+    {
+        sendSoilMoisturePacket();
+    }
 
     // Auto-restart advertising on client disconnection
     if (!deviceConnected && oldDeviceConnected)
@@ -198,6 +243,5 @@ void loop()
         oldDeviceConnected = deviceConnected;
     }
 
-    // 1 Hz sampling rate
-    delay(1000);
+    delay(5);
 }
