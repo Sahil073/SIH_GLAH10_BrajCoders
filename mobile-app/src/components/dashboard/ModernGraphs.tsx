@@ -1,6 +1,6 @@
 import React from "react";
 import { View } from "react-native";
-import Svg, { Path, Circle, Rect } from "react-native-svg";
+import Svg, { Path, Circle, Rect, Line } from "react-native-svg";
 import { WeeklyBarPoint } from "@/types/dashboard";
 
 /**
@@ -8,6 +8,9 @@ import { WeeklyBarPoint } from "@/types/dashboard";
  */
 function createSplinePath(points: { x: number; y: number }[]): string {
   if (points.length === 0) return "";
+  if (points.length === 1) {
+    return `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
+  }
   let path = `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
 
   for (let i = 0; i < points.length - 1; i++) {
@@ -30,43 +33,55 @@ function createSplinePath(points: { x: number; y: number }[]): string {
 
 /**
  * Dual Wave Chart for Blood Pressure / SpO2 Card
- * Shows two undulating smooth sine curves (primary dark, secondary muted)
+ * Shows two undulating smooth curves or neutral dashed baselines if data is empty.
  */
 export function DualWaveChart({
-  upperValues = [35, 48, 40, 56, 44, 52, 38, 46],
-  lowerValues = [18, 30, 24, 34, 26, 32, 22, 28],
+  upperValues = [],
+  lowerValues = [],
   height = 42,
+  upperStroke = "#161616",
+  lowerStroke = "#9E9B94",
 }: {
   upperValues?: number[];
   lowerValues?: number[];
   height?: number;
+  upperStroke?: string;
+  lowerStroke?: string;
 }) {
   const chartWidth = 140;
   const paddingX = 4;
   const usableWidth = chartWidth - paddingX * 2;
 
-  // Normalize upper curve
-  const upperMin = 20;
-  const upperMax = 70;
-  const upperPoints = upperValues.map((val, idx) => {
-    const x = paddingX + (idx / (upperValues.length - 1)) * usableWidth;
-    const norm = (val - upperMin) / (upperMax - upperMin);
-    const y = height - 6 - norm * (height - 12);
-    return { x, y };
-  });
+  const hasUpper = upperValues.length >= 2;
+  const hasLower = lowerValues.length >= 2;
 
-  // Normalize lower curve
-  const lowerMin = 10;
-  const lowerMax = 50;
-  const lowerPoints = lowerValues.map((val, idx) => {
-    const x = paddingX + (idx / (lowerValues.length - 1)) * usableWidth;
-    const norm = (val - lowerMin) / (lowerMax - lowerMin);
-    const y = height - 2 - norm * (height - 14);
-    return { x, y };
-  });
+  let upperPath = "";
+  if (hasUpper) {
+    const upperMin = Math.min(...upperValues);
+    const upperMax = Math.max(...upperValues);
+    const range = upperMax - upperMin || 1;
+    const upperPoints = upperValues.map((val, idx) => {
+      const x = paddingX + (idx / (upperValues.length - 1)) * usableWidth;
+      const norm = (val - upperMin) / range;
+      const y = height - 8 - norm * (height - 16);
+      return { x, y };
+    });
+    upperPath = createSplinePath(upperPoints);
+  }
 
-  const upperPath = createSplinePath(upperPoints);
-  const lowerPath = createSplinePath(lowerPoints);
+  let lowerPath = "";
+  if (hasLower) {
+    const lowerMin = Math.min(...lowerValues);
+    const lowerMax = Math.max(...lowerValues);
+    const range = lowerMax - lowerMin || 1;
+    const lowerPoints = lowerValues.map((val, idx) => {
+      const x = paddingX + (idx / (lowerValues.length - 1)) * usableWidth;
+      const norm = (val - lowerMin) / range;
+      const y = height - 2 - norm * (height - 18);
+      return { x, y };
+    });
+    lowerPath = createSplinePath(lowerPoints);
+  }
 
   return (
     <View style={{ height, width: "100%" }}>
@@ -76,24 +91,49 @@ export function DualWaveChart({
         viewBox={`0 0 ${chartWidth} ${height}`}
         preserveAspectRatio="none"
       >
-        {/* Secondary lower wave */}
-        <Path
-          d={lowerPath}
-          fill="none"
-          stroke="#9E9B94"
-          strokeWidth={1.8}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        {/* Primary upper wave */}
-        <Path
-          d={upperPath}
-          fill="none"
-          stroke="#161616"
-          strokeWidth={2.2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
+        {/* Secondary lower wave or neutral dashed baseline */}
+        {hasLower ? (
+          <Path
+            d={lowerPath}
+            fill="none"
+            stroke={lowerStroke}
+            strokeWidth={1.8}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ) : (
+          <Line
+            x1={paddingX}
+            y1={height * 0.7}
+            x2={chartWidth - paddingX}
+            y2={height * 0.7}
+            stroke="#C4C0B6"
+            strokeWidth={1.5}
+            strokeDasharray="4 4"
+          />
+        )}
+
+        {/* Primary upper wave or neutral dashed baseline */}
+        {hasUpper ? (
+          <Path
+            d={upperPath}
+            fill="none"
+            stroke={upperStroke}
+            strokeWidth={2.2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ) : (
+          <Line
+            x1={paddingX}
+            y1={height * 0.35}
+            x2={chartWidth - paddingX}
+            y2={height * 0.35}
+            stroke="#8A867D"
+            strokeWidth={1.8}
+            strokeDasharray="4 4"
+          />
+        )}
       </Svg>
     </View>
   );
@@ -101,31 +141,40 @@ export function DualWaveChart({
 
 /**
  * Pulse Wave Chart for Heart Rate Card
- * Crisp black pulse wave across the vibrant lime card
+ * Crisp black pulse wave across the card, or calm baseline if waiting for signal.
  */
 export function PulseWaveChart({
-  values = [40, 36, 52, 44, 40, 68, 38, 56, 35, 48],
+  values = [],
   height = 42,
+  strokeColor = "#161616",
+  baselineColor = "#5C6624",
 }: {
   values?: number[];
   height?: number;
+  strokeColor?: string;
+  baselineColor?: string;
 }) {
   const chartWidth = 140;
   const paddingX = 4;
   const usableWidth = chartWidth - paddingX * 2;
 
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
+  const hasData = values.length >= 2;
 
-  const points = values.map((val, idx) => {
-    const x = paddingX + (idx / (values.length - 1)) * usableWidth;
-    const norm = (val - min) / range;
-    const y = height - 5 - norm * (height - 10);
-    return { x, y };
-  });
+  let path = "";
+  if (hasData) {
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const range = max - min || 1;
 
-  const path = createSplinePath(points);
+    const points = values.map((val, idx) => {
+      const x = paddingX + (idx / (values.length - 1)) * usableWidth;
+      const norm = (val - min) / range;
+      const y = height - 5 - norm * (height - 10);
+      return { x, y };
+    });
+
+    path = createSplinePath(points);
+  }
 
   return (
     <View style={{ height, width: "100%" }}>
@@ -135,14 +184,26 @@ export function PulseWaveChart({
         viewBox={`0 0 ${chartWidth} ${height}`}
         preserveAspectRatio="none"
       >
-        <Path
-          d={path}
-          fill="none"
-          stroke="#161616"
-          strokeWidth={2.2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
+        {hasData ? (
+          <Path
+            d={path}
+            fill="none"
+            stroke={strokeColor}
+            strokeWidth={2.2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ) : (
+          <Line
+            x1={paddingX}
+            y1={height / 2}
+            x2={chartWidth - paddingX}
+            y2={height / 2}
+            stroke={baselineColor}
+            strokeWidth={1.8}
+            strokeDasharray="5 4"
+          />
+        )}
       </Svg>
     </View>
   );
@@ -153,18 +214,31 @@ export function PulseWaveChart({
  * 7 vertical capsules with two-tone fill matching app_ui.jpg
  */
 export function PillBarChart({
-  bars,
+  bars = [],
   height = 44,
   trackColor = "#BBD839",
   fillColor = "#161616",
 }: {
-  bars: WeeklyBarPoint[];
+  bars?: WeeklyBarPoint[];
   height?: number;
   trackColor?: string;
   fillColor?: string;
 }) {
+  const displayBars =
+    bars.length > 0
+      ? bars
+      : [
+          { day: "M", value: 0, maxValue: 10000 },
+          { day: "T", value: 0, maxValue: 10000 },
+          { day: "W", value: 0, maxValue: 10000 },
+          { day: "T", value: 0, maxValue: 10000 },
+          { day: "F", value: 0, maxValue: 10000 },
+          { day: "S", value: 0, maxValue: 10000 },
+          { day: "S", value: 0, maxValue: 10000 },
+        ];
+
   const barWidth = 6.5;
-  const barCount = bars.length;
+  const barCount = displayBars.length;
   const totalSvgWidth = 130;
   const spacing = (totalSvgWidth - barWidth * barCount) / (barCount - 1);
 
@@ -176,10 +250,10 @@ export function PillBarChart({
         viewBox={`0 0 ${totalSvgWidth} ${height}`}
         preserveAspectRatio="xMidYMid meet"
       >
-        {bars.map((item, idx) => {
+        {displayBars.map((item, idx) => {
           const x = idx * (barWidth + spacing);
-          const ratio = Math.min(Math.max(item.value / item.maxValue, 0.2), 0.95);
-          const activeHeight = height * ratio;
+          const ratio = item.maxValue > 0 ? Math.min(Math.max(item.value / item.maxValue, 0), 1) : 0;
+          const activeHeight = ratio > 0 ? Math.max(height * ratio, 6) : 0;
           const activeY = height - activeHeight;
 
           return (
@@ -194,14 +268,16 @@ export function PillBarChart({
                 fill={trackColor}
               />
               {/* Dark active bottom fill capsule */}
-              <Rect
-                x={x}
-                y={activeY}
-                width={barWidth}
-                height={activeHeight}
-                rx={barWidth / 2}
-                fill={fillColor}
-              />
+              {activeHeight > 0 && (
+                <Rect
+                  x={x}
+                  y={activeY}
+                  width={barWidth}
+                  height={activeHeight}
+                  rx={barWidth / 2}
+                  fill={fillColor}
+                />
+              )}
             </React.Fragment>
           );
         })}
@@ -215,7 +291,7 @@ export function PillBarChart({
  * Modern circular arc gauge matching app_ui.jpg
  */
 export function DonutArcChart({
-  progress = 0.58, // 0 to 1
+  progress = 0, // 0 to 1
   size = 54,
   trackColor = "#DDD9D1",
   activeColor = "#161616",
@@ -230,7 +306,8 @@ export function DonutArcChart({
   const center = size / 2;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset = circumference * (1 - Math.min(Math.max(progress, 0.05), 1));
+  const clamped = Math.min(Math.max(progress, 0), 1);
+  const strokeDashoffset = circumference * (1 - clamped);
 
   return (
     <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
@@ -245,18 +322,20 @@ export function DonutArcChart({
           fill="none"
         />
         {/* Active Dark Arc Segment */}
-        <Circle
-          cx={center}
-          cy={center}
-          r={radius}
-          stroke={activeColor}
-          strokeWidth={strokeWidth}
-          fill="none"
-          strokeDasharray={`${circumference} ${circumference}`}
-          strokeDashoffset={strokeDashoffset}
-          strokeLinecap="round"
-          transform={`rotate(-90 ${center} ${center})`}
-        />
+        {clamped > 0 && (
+          <Circle
+            cx={center}
+            cy={center}
+            r={radius}
+            stroke={activeColor}
+            strokeWidth={strokeWidth}
+            fill="none"
+            strokeDasharray={`${circumference} ${circumference}`}
+            strokeDashoffset={strokeDashoffset}
+            strokeLinecap="round"
+            transform={`rotate(-90 ${center} ${center})`}
+          />
+        )}
       </Svg>
     </View>
   );
@@ -264,10 +343,10 @@ export function DonutArcChart({
 
 /**
  * Smooth Trend Wave Chart for Temperature, AQI, Moisture, etc.
- * Supports configurable stroke color, stroke width, and optional inflection markers
+ * Renders smooth spline curve or neutral dashed line when empty.
  */
 export function SmoothTrendWaveChart({
-  values = [30, 42, 38, 50, 45, 55, 48, 52],
+  values = [],
   height = 42,
   strokeColor = "#161616",
   strokeWidth = 2.2,
@@ -285,18 +364,25 @@ export function SmoothTrendWaveChart({
   const paddingX = 4;
   const usableWidth = chartWidth - paddingX * 2;
 
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
+  const hasData = values.length >= 2;
 
-  const points = values.map((val, idx) => {
-    const x = paddingX + (idx / (values.length - 1)) * usableWidth;
-    const norm = (val - min) / range;
-    const y = height - 6 - norm * (height - 12);
-    return { x, y };
-  });
+  let points: { x: number; y: number }[] = [];
+  let path = "";
 
-  const path = createSplinePath(points);
+  if (hasData) {
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const range = max - min || 1;
+
+    points = values.map((val, idx) => {
+      const x = paddingX + (idx / (values.length - 1)) * usableWidth;
+      const norm = (val - min) / range;
+      const y = height - 6 - norm * (height - 12);
+      return { x, y };
+    });
+
+    path = createSplinePath(points);
+  }
 
   return (
     <View style={{ height, width: "100%" }}>
@@ -306,30 +392,43 @@ export function SmoothTrendWaveChart({
         viewBox={`0 0 ${chartWidth} ${height}`}
         preserveAspectRatio="none"
       >
-        <Path
-          d={path}
-          fill="none"
-          stroke={strokeColor}
-          strokeWidth={strokeWidth}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        {showDots &&
-          [0, Math.floor(points.length / 2), points.length - 1].map((idx) => {
-            const pt = points[idx];
-            if (!pt) return null;
-            return (
-              <Circle
-                key={`pt-${idx}`}
-                cx={pt.x}
-                cy={pt.y}
-                r={dotRadius}
-                fill={strokeColor}
-              />
-            );
-          })}
+        {hasData ? (
+          <>
+            <Path
+              d={path}
+              fill="none"
+              stroke={strokeColor}
+              strokeWidth={strokeWidth}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            {showDots &&
+              [0, Math.floor(points.length / 2), points.length - 1].map((idx) => {
+                const pt = points[idx];
+                if (!pt) return null;
+                return (
+                  <Circle
+                    key={`pt-${idx}`}
+                    cx={pt.x}
+                    cy={pt.y}
+                    r={dotRadius}
+                    fill={strokeColor}
+                  />
+                );
+              })}
+          </>
+        ) : (
+          <Line
+            x1={paddingX}
+            y1={height / 2}
+            x2={chartWidth - paddingX}
+            y2={height / 2}
+            stroke="#9E9B94"
+            strokeWidth={1.8}
+            strokeDasharray="4 4"
+          />
+        )}
       </Svg>
     </View>
   );
 }
-

@@ -10,6 +10,7 @@ import {
 } from "@/data/mockHistoryData";
 import { MultiMetricVitalsChart } from "@/components/history/MultiMetricVitalsChart";
 import { CalendarPickerModal } from "@/components/history/CalendarPickerModal";
+import { useTheme } from "@/store/themeStore";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -42,6 +43,7 @@ const MONTH_NAMES = [
 ];
 
 export default function HistoryScreen() {
+  const { colors, isDark } = useTheme();
   const [period, setPeriod] = useState<PeriodTab>("day");
   const [selectedDate, setSelectedDate] = useState<Date>(new Date(2025, 4, 23)); // 23 May 2025 matching the user reference image
   const [calendarVisible, setCalendarVisible] = useState<boolean>(false);
@@ -122,14 +124,20 @@ export default function HistoryScreen() {
   const allKeys: MetricKey[] = ["hr", "spo2", "temp", "aqi", "moisture", "steps"];
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#F7F5F0" }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       <ScrollView
         contentContainerStyle={{ paddingBottom: 120, paddingTop: 16 }}
         showsVerticalScrollIndicator={false}
         className="px-5"
       >
-        {/* Top Period Segmented Switcher (Day | Week | Month) matching reference image */}
-        <View className="bg-white/80 rounded-2xl p-1 border border-[#EDE9E2] flex-row mb-4 shadow-xs">
+        {/* Top Period Segmented Switcher (Day | Week | Month) */}
+        <View
+          style={{
+            backgroundColor: colors.cardBg,
+            borderColor: colors.cardBorder,
+          }}
+          className="rounded-2xl p-1 border flex-row mb-4 shadow-xs"
+        >
           {(["day", "week", "month"] as const).map((tab) => {
             const isSelected = period === tab;
             const labels = {
@@ -143,14 +151,23 @@ export default function HistoryScreen() {
                 key={tab}
                 activeOpacity={0.8}
                 onPress={() => setPeriod(tab)}
+                style={
+                  isSelected
+                    ? {
+                        backgroundColor: colors.backgroundSecondary,
+                        borderColor: colors.cardBorder,
+                      }
+                    : undefined
+                }
                 className={`flex-1 py-2.5 rounded-xl items-center justify-center ${
-                  isSelected ? "bg-white shadow-sm border border-[#EAE6DF]" : ""
+                  isSelected ? "shadow-sm border" : ""
                 }`}
               >
                 <Text
-                  className={`font-poppins-semibold text-xs ${
-                    isSelected ? "text-[#161616]" : "text-[#8A9A90]"
-                  }`}
+                  style={{
+                    color: isSelected ? colors.textPrimary : colors.textMuted,
+                  }}
+                  className="font-poppins-semibold text-xs"
                 >
                   {labels[tab]}
                 </Text>
@@ -159,15 +176,19 @@ export default function HistoryScreen() {
           })}
         </View>
 
-        {/* Date Selector Row (< 23 May 2025 > [📅]) matching reference image */}
+        {/* Date Selector Row (< 23 May 2025 > [📅]) */}
         <View className="flex-row items-center justify-between mb-5 px-1">
           {/* Left Arrow */}
           <TouchableOpacity
             activeOpacity={0.7}
             onPress={handlePrevDate}
-            className="w-9 h-9 rounded-full bg-white items-center justify-center border border-[#EDE9E2] shadow-xs"
+            style={{
+              backgroundColor: colors.cardBg,
+              borderColor: colors.cardBorder,
+            }}
+            className="w-9 h-9 rounded-full items-center justify-center border shadow-xs"
           >
-            <ChevronLeftIcon size={16} color="#161616" />
+            <ChevronLeftIcon size={16} color={colors.textPrimary} />
           </TouchableOpacity>
 
           {/* Date Label in Center (Tap opens calendar) */}
@@ -176,7 +197,10 @@ export default function HistoryScreen() {
             onPress={() => setCalendarVisible(true)}
             className="py-1 px-3"
           >
-            <Text className="font-poppins-bold text-base text-[#161616] text-center">
+            <Text
+              style={{ color: colors.textPrimary }}
+              className="font-poppins-bold text-base text-center"
+            >
               {formattedDateLabel}
             </Text>
           </TouchableOpacity>
@@ -186,22 +210,30 @@ export default function HistoryScreen() {
             <TouchableOpacity
               activeOpacity={0.7}
               onPress={handleNextDate}
-              className="w-9 h-9 rounded-full bg-white items-center justify-center border border-[#EDE9E2] shadow-xs mr-2"
+              style={{
+                backgroundColor: colors.cardBg,
+                borderColor: colors.cardBorder,
+              }}
+              className="w-9 h-9 rounded-full items-center justify-center border shadow-xs mr-2"
             >
-              <ChevronRightIcon size={16} color="#161616" />
+              <ChevronRightIcon size={16} color={colors.textPrimary} />
             </TouchableOpacity>
 
             <TouchableOpacity
               activeOpacity={0.7}
               onPress={() => setCalendarVisible(true)}
-              className="w-9 h-9 rounded-full bg-white items-center justify-center border border-[#EDE9E2] shadow-xs"
+              style={{
+                backgroundColor: colors.cardBg,
+                borderColor: colors.cardBorder,
+              }}
+              className="w-9 h-9 rounded-full items-center justify-center border shadow-xs"
             >
-              <CalendarDaysIcon size={18} color="#161616" />
+              <CalendarDaysIcon size={18} color={colors.textPrimary} />
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Single Vitals Trend Graph displaying all 6 metrics matching image */}
+        {/* Single Vitals Trend Graph displaying all 6 metrics */}
         <MultiMetricVitalsChart
           points={dataset.points}
           xLabels={dataset.xLabels}
@@ -210,10 +242,16 @@ export default function HistoryScreen() {
 
         {/* Section Title: Daily Vitals Overview */}
         <View className="flex-row items-center justify-between mb-3 px-1">
-          <Text className="font-poppins-bold text-base text-[#161616]">
+          <Text
+            style={{ color: colors.textPrimary }}
+            className="font-poppins-bold text-base"
+          >
             All 6 Metrics Overview
           </Text>
-          <Text className="font-poppins-regular text-xs text-[#8A9A90]">
+          <Text
+            style={{ color: colors.textMuted }}
+            className="font-poppins-regular text-xs"
+          >
             Average & Range
           </Text>
         </View>
@@ -227,47 +265,75 @@ export default function HistoryScreen() {
             return (
               <View
                 key={key}
-                className="w-[48.5%] bg-white rounded-2xl p-3.5 border border-[#EDE9E2] shadow-xs mb-3"
+                style={{
+                  backgroundColor: colors.cardBg,
+                  borderColor: colors.cardBorder,
+                }}
+                className="w-[48.5%] rounded-2xl p-3.5 border shadow-xs mb-3"
               >
                 {/* Header row with icon & status */}
                 <View className="flex-row items-center justify-between mb-2">
                   <View
                     className="w-8 h-8 rounded-full items-center justify-center"
-                    style={{ backgroundColor: `${config.color}15` }}
+                    style={{ backgroundColor: `${config.color}18` }}
                   >
                     {renderMetricIcon(key, config.color)}
                   </View>
 
-                  <View className="px-2 py-0.5 rounded-full bg-[#F5F2EB]">
-                    <Text className="font-poppins-medium text-[10px] text-[#55695E]">
+                  <View
+                    style={{ backgroundColor: colors.backgroundSecondary }}
+                    className="px-2 py-0.5 rounded-full"
+                  >
+                    <Text
+                      style={{ color: colors.textSecondary }}
+                      className="font-poppins-medium text-[10px]"
+                    >
                       {summary.status}
                     </Text>
                   </View>
                 </View>
 
                 {/* Metric label */}
-                <Text className="font-poppins-medium text-xs text-[#8A9A90]">
+                <Text
+                  style={{ color: colors.textMuted }}
+                  className="font-poppins-medium text-xs"
+                >
                   {config.label}
                 </Text>
 
                 {/* Main value */}
                 <View className="flex-row items-baseline mt-0.5">
-                  <Text className="font-poppins-bold text-lg text-[#161616]">
+                  <Text
+                    style={{ color: colors.textPrimary }}
+                    className="font-poppins-bold text-lg"
+                  >
                     {summary.avg}
                   </Text>
                   {config.unit ? (
-                    <Text className="font-poppins-medium text-xs text-[#55695E] ml-1">
+                    <Text
+                      style={{ color: colors.textSecondary }}
+                      className="font-poppins-medium text-xs ml-1"
+                    >
                       {config.unit}
                     </Text>
                   ) : null}
                 </View>
 
                 {/* Range stats */}
-                <View className="flex-row items-center justify-between mt-2 pt-2 border-t border-[#F5F2EB]">
-                  <Text className="font-poppins-regular text-[10px] text-[#9CA3AF]">
+                <View
+                  style={{ borderColor: colors.divider }}
+                  className="flex-row items-center justify-between mt-2 pt-2 border-t"
+                >
+                  <Text
+                    style={{ color: colors.textMuted }}
+                    className="font-poppins-regular text-[10px]"
+                  >
                     Min: {summary.min}
                   </Text>
-                  <Text className="font-poppins-regular text-[10px] text-[#9CA3AF]">
+                  <Text
+                    style={{ color: colors.textMuted }}
+                    className="font-poppins-regular text-[10px]"
+                  >
                     Max: {summary.max}
                   </Text>
                 </View>

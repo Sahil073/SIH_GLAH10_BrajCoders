@@ -97,6 +97,8 @@ function ProfileIcon({ color }: { color: string }) {
   );
 }
 
+import { useTheme } from "@/store/themeStore";
+
 interface AnimatedTabProps {
   label: string;
   isFocused: boolean;
@@ -105,6 +107,7 @@ interface AnimatedTabProps {
 }
 
 function TabItem({ label, isFocused, onPress, renderIcon }: AnimatedTabProps) {
+  const { colors, isDark } = useTheme();
   const [scale] = useState(() => new Animated.Value(1));
 
   const handlePressIn = () => {
@@ -125,8 +128,8 @@ function TabItem({ label, isFocused, onPress, renderIcon }: AnimatedTabProps) {
     }).start();
   };
 
-  const activeColor = "#214332";
-  const inactiveColor = "#8A9A90";
+  const activeColor = isDark ? "#86EFAC" : "#214332";
+  const inactiveColor = colors.textMuted;
   const color = isFocused ? activeColor : inactiveColor;
 
   return (
@@ -145,10 +148,9 @@ function TabItem({ label, isFocused, onPress, renderIcon }: AnimatedTabProps) {
           {renderIcon(color)}
         </View>
         <Text
+          style={{ color: isFocused ? activeColor : inactiveColor }}
           className={`text-[11px] tracking-tight ${
-            isFocused
-              ? "font-poppins-bold text-[#214332]"
-              : "font-poppins-medium text-[#8A9A90]"
+            isFocused ? "font-poppins-bold" : "font-poppins-medium"
           }`}
         >
           {label}
@@ -159,6 +161,7 @@ function TabItem({ label, isFocused, onPress, renderIcon }: AnimatedTabProps) {
 }
 
 export function UniversalNavBar({ state, navigation }: BottomTabBarProps) {
+  const { colors, isDark } = useTheme();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
@@ -176,7 +179,7 @@ export function UniversalNavBar({ state, navigation }: BottomTabBarProps) {
         }),
         Animated.timing(sosPulse, {
           toValue: 0,
-          duration: 1800,
+          duration: 0,
           useNativeDriver: true,
         }),
       ])
@@ -198,50 +201,48 @@ export function UniversalNavBar({ state, navigation }: BottomTabBarProps) {
     Animated.spring(sosScale, {
       toValue: 1,
       useNativeDriver: true,
-      speed: 16,
-      bounciness: 10,
+      speed: 18,
+      bounciness: 8,
     }).start();
   };
 
-  const pulseRingScale = useMemo(
-    () =>
-      sosPulse.interpolate({
-        inputRange: [0, 1],
-        outputRange: [1, 1.25],
-      }),
-    [sosPulse]
-  );
-
-  const pulseRingOpacity = useMemo(
-    () =>
-      sosPulse.interpolate({
-        inputRange: [0, 0.5, 1],
-        outputRange: [0.4, 0.15, 0],
-      }),
-    [sosPulse]
-  );
-
-  // Calculate curved cutout geometry in SVG
+  // Curved cutout geometry calculations
   const barHeight = 64;
   const center = width / 2;
-  const notchWidth = 44; // Half-width of notch curve
-  const notchDepth = 34; // Depth of cutout
+  const notchRadius = 36;
+  const notchDepth = 22;
 
-  // Smooth bezier curve for cutout
-  const pathData = `
-    M 0 0
-    L ${center - notchWidth} 0
-    C ${center - notchWidth + 14} 0, ${center - 28} ${notchDepth}, ${center} ${notchDepth}
-    C ${center + 28} ${notchDepth}, ${center + notchWidth - 14} 0, ${center + notchWidth} 0
-    L ${width} 0
-    L ${width} ${barHeight + insets.bottom + 20}
-    L 0 ${barHeight + insets.bottom + 20}
-    Z
-  `;
+  const pathData = useMemo(() => {
+    const r = notchRadius;
+    const d = notchDepth;
+    const leftCurveStart = center - r - 16;
+    const rightCurveEnd = center + r + 16;
+
+    return `
+      M 0,0
+      L ${leftCurveStart},0
+      C ${center - r},0 ${center - r * 0.8},${d} ${center},${d}
+      C ${center + r * 0.8},${d} ${center + r},0 ${rightCurveEnd},0
+      L ${width},0
+      L ${width},${barHeight + insets.bottom + 20}
+      L 0,${barHeight + insets.bottom + 20}
+      Z
+    `;
+  }, [width, center, insets.bottom]);
+
+  const pulseRingScale = sosPulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.45],
+  });
+
+  const pulseRingOpacity = sosPulse.interpolate({
+    inputRange: [0, 0.4, 1],
+    outputRange: [0.5, 0.25, 0],
+  });
 
   // Filter routes for Home, Alerts, History, Profile and SOS
   const findRouteIndex = (name: string) =>
-    state.routes.findIndex((r: { name: string }) => r.name === name);
+    state.routes.findIndex((route) => route.name === name);
 
   const homeIndex = findRouteIndex("index");
   const alertsIndex = findRouteIndex("alerts");
@@ -280,8 +281,8 @@ export function UniversalNavBar({ state, navigation }: BottomTabBarProps) {
         <Svg width={width} height={barHeight + insets.bottom + 20}>
           <Path
             d={pathData}
-            fill="#FFFFFF"
-            stroke="#E9EFEA"
+            fill={colors.cardBg}
+            stroke={colors.cardBorder}
             strokeWidth={1.2}
           />
         </Svg>
@@ -316,6 +317,7 @@ export function UniversalNavBar({ state, navigation }: BottomTabBarProps) {
           onPressOut={handleSosPressOut}
           style={[
             styles.sosButton,
+            { borderColor: colors.cardBg },
             isSosFocused && styles.sosButtonActive,
           ]}
         >
