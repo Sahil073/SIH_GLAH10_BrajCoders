@@ -19,7 +19,9 @@ import { useBle } from "@/ble";
 import { useTheme } from "@/store/themeStore";
 import { RawDataRecorderCard } from "@/components/common/RawDataRecorderCard";
 import { clearAllHealthData, archiveAndPruneData, fetchStorageStats } from "@/database";
-import { LockIcon, UsersIcon, StethoscopeIcon, SunIcon, DownloadArchiveIcon, CloudIcon } from "@/components/common/AppIcons";
+import { LockIcon, UsersIcon, StethoscopeIcon, SunIcon, DownloadArchiveIcon, CloudIcon, GlobeIcon } from "@/components/common/AppIcons";
+import { useLanguage } from "@/i18n/languages";
+import { LanguageSelectorModal } from "@/components/common/LanguageSelectorModal";
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -36,8 +38,10 @@ export default function ProfileScreen() {
     disconnect,
   } = useBle();
 
+  const { currentLanguageInfo, t } = useLanguage();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLanguageModalOpen, setIsLanguageModalOpen] = useState(false);
 
   // Storage and data management state
   const [storageStats, setStorageStats] = useState<{
@@ -60,9 +64,8 @@ export default function ProfileScreen() {
   }, [loadStats]);
 
   const handleClearAllData = () => {
-    const title = "Erase All Telemetry & Test Data?";
-    const msg =
-      "This will erase all recorded raw readings, alerts, and past session averages for this profile. Use this to remove noisy prototype testing data and start fresh.";
+    const title = t("eraseConfirmTitle");
+    const msg = t("eraseConfirmMsg");
     if (Platform.OS === "web") {
       if (typeof window !== "undefined" && window.confirm(`${title}\n\n${msg}`)) {
         void (async () => {
@@ -70,21 +73,21 @@ export default function ProfileScreen() {
           await clearAllHealthData(activeUserId);
           await loadStats();
           setIsClearingData(false);
-          alert("All test telemetry has been cleared.");
+          alert(t("eraseSuccess"));
         })();
       }
     } else {
       Alert.alert(title, msg, [
-        { text: "Cancel", style: "cancel" },
+        { text: t("cancel"), style: "cancel" },
         {
-          text: "Erase Everything",
+          text: t("eraseAllTestData"),
           style: "destructive",
           onPress: async () => {
             setIsClearingData(true);
             await clearAllHealthData(activeUserId);
             await loadStats();
             setIsClearingData(false);
-            Alert.alert("Success", "All test telemetry has been cleared.");
+            Alert.alert(t("save"), t("eraseSuccess"));
           },
         },
       ]);
@@ -96,12 +99,11 @@ export default function ProfileScreen() {
     await archiveAndPruneData(6, activeUserId);
     await loadStats();
     setIsArchivingData(false);
-    const msg =
-      "Historical readings older than 6 months have been downsampled into statistical daily summaries and pruned from raw storage.";
+    const msg = t("archiveDoneMsg");
     if (Platform.OS === "web") {
       alert(msg);
     } else {
-      Alert.alert("Downsampling Complete", msg);
+      Alert.alert(t("archiveDoneTitle"), msg);
     }
   };
 
@@ -234,13 +236,13 @@ export default function ProfileScreen() {
             style={{ color: colors.textPrimary }}
             className="font-poppins-bold text-[28px]"
           >
-            User Profile
+            {t("userProfile")}
           </Text>
           <Text
             style={{ color: colors.textSecondary }}
             className="font-poppins-regular text-sm mt-0.5"
           >
-            Multi-user account, appearance, and hardware setup
+            {t("profileSub")}
           </Text>
         </View>
 
@@ -289,7 +291,7 @@ export default function ProfileScreen() {
                   style={{ color: colors.textMuted }}
                   className="font-poppins-medium text-[10.5px]"
                 >
-                  {isOfflineUser ? "Phone Local Storage (BLE Direct)" : "Google Account"}
+                  {isOfflineUser ? `Phone (${t("offlineMode")})` : "Google Account"}
                 </Text>
               </View>
             </View>
@@ -308,7 +310,7 @@ export default function ProfileScreen() {
               style={{ color: isDark ? colors.textPrimary : "#214332" }}
               className="font-poppins-semibold text-xs"
             >
-              Edit Account ›
+              {t("editAccount")}
             </Text>
           </TouchableOpacity>
         </View>
@@ -329,7 +331,7 @@ export default function ProfileScreen() {
                   style={{ color: isDark ? "#A7F3D0" : "#1E3A2B" }}
                   className="font-poppins-bold text-sm"
                 >
-                  Sign In with Google Account
+                  {t("signInGoogle")}
                 </Text>
               </View>
               <View
@@ -340,7 +342,7 @@ export default function ProfileScreen() {
                   style={{ color: isDark ? "#6EE7B7" : "#065F46" }}
                   className="font-poppins-semibold text-[10px]"
                 >
-                  Cloud Sync
+                  {t("cloudSync")}
                 </Text>
               </View>
             </View>
@@ -349,7 +351,7 @@ export default function ProfileScreen() {
               style={{ color: isDark ? "#D1D5DB" : "#456353" }}
               className="font-poppins-regular text-xs mb-3"
             >
-              Switch from offline storage to your Google account to sync medical records and AI baselines across devices.
+              {t("cloudSyncDesc")}
             </Text>
 
             <TouchableOpacity
@@ -358,11 +360,62 @@ export default function ProfileScreen() {
               className="w-full py-3 bg-[#214332] rounded-xl items-center justify-center shadow-xs"
             >
               <Text className="font-poppins-semibold text-white text-xs tracking-wide">
-                Sign In to Cloud Account ›
+                {t("signInCloudBtn")}
               </Text>
             </TouchableOpacity>
           </View>
         )}
+
+        {/* Language Selection Card */}
+        <View
+          style={{ backgroundColor: colors.cardBg, borderColor: colors.cardBorder }}
+          className="rounded-2xl p-4 mb-4 border shadow-sm"
+        >
+          <View className="flex-row items-center justify-between">
+            <View className="flex-row items-center flex-1 mr-3">
+              <View
+                style={{
+                  backgroundColor: isDark ? colors.backgroundSecondary : "#EBF5EE",
+                  borderColor: colors.cardBorder,
+                }}
+                className="w-11 h-11 rounded-2xl items-center justify-center mr-3 border shrink-0"
+              >
+                <GlobeIcon size={20} color="#16A34A" />
+              </View>
+              <View className="flex-1">
+                <Text
+                  style={{ color: colors.textPrimary }}
+                  className="font-poppins-bold text-sm"
+                >
+                  {t("appLanguage")}
+                </Text>
+                <Text
+                  style={{ color: colors.textSecondary }}
+                  className="font-poppins-regular text-xs mt-0.5"
+                >
+                  {currentLanguageInfo.name} ({currentLanguageInfo.englishName})
+                </Text>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={() => setIsLanguageModalOpen(true)}
+              style={{
+                backgroundColor: isDark ? colors.backgroundSecondary : "#EBF5EE",
+                borderColor: colors.cardBorder,
+              }}
+              className="px-3.5 py-2 rounded-xl border shrink-0"
+            >
+              <Text
+                style={{ color: isDark ? colors.textPrimary : "#214332" }}
+                className="font-poppins-semibold text-xs"
+              >
+                {t("changeLanguage")}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
 
         {/* Connected Wearable Device Card */}
         <View
@@ -374,7 +427,7 @@ export default function ProfileScreen() {
               style={{ color: colors.textPrimary }}
               className="font-poppins-bold text-sm"
             >
-              Wearable Sensor Hub
+              {t("wearableSensorHub")}
             </Text>
             <View
               className={`px-2.5 py-0.5 rounded-full border ${
@@ -388,7 +441,7 @@ export default function ProfileScreen() {
                   isConnected ? "text-[#16A34A]" : "text-rose-600"
                 }`}
               >
-                {isConnected ? "BLE Connected" : "Disconnected"}
+                {isConnected ? t("connectedBle") : t("disconnected")}
               </Text>
             </View>
           </View>
@@ -398,10 +451,10 @@ export default function ProfileScreen() {
             className="flex-row justify-between py-2 border-b"
           >
             <Text style={{ color: colors.textSecondary }} className="font-poppins-medium text-xs">
-              Device Name
+              {t("deviceName")}
             </Text>
             <Text style={{ color: colors.textPrimary }} className="font-poppins-semibold text-xs">
-              {isConnected ? connectedDevice?.name || "ESP32_Sensor_Hub" : "None"}
+              {isConnected ? connectedDevice?.name || "ESP32_Sensor_Hub" : t("none")}
             </Text>
           </View>
 
@@ -410,10 +463,10 @@ export default function ProfileScreen() {
             className="flex-row justify-between py-2 border-b"
           >
             <Text style={{ color: colors.textSecondary }} className="font-poppins-medium text-xs">
-              Device ID / MAC
+              {t("deviceIdMac")}
             </Text>
             <Text style={{ color: colors.textMuted }} className="font-poppins-medium text-xs">
-              {connectedDeviceId || "Not paired"}
+              {connectedDeviceId || t("notPaired")}
             </Text>
           </View>
 
@@ -422,10 +475,10 @@ export default function ProfileScreen() {
             className="flex-row justify-between py-2 border-b"
           >
             <Text style={{ color: colors.textSecondary }} className="font-poppins-medium text-xs">
-              Packets Received
+              {t("packetsReceived")}
             </Text>
             <Text className="font-poppins-semibold text-xs text-[#16A34A]">
-              {totalPackets} packets
+              {totalPackets} {t("packets")}
             </Text>
           </View>
 
@@ -448,7 +501,7 @@ export default function ProfileScreen() {
               style={{ color: isDark ? colors.textPrimary : "#214332" }}
               className="font-poppins-semibold text-xs"
             >
-              {isConnected ? "Disconnect Wearable" : "Scan & Connect Wearable ›"}
+              {isConnected ? t("disconnectWearable") : t("scanConnectWearable")}
             </Text>
           </TouchableOpacity>
         </View>
@@ -466,7 +519,7 @@ export default function ProfileScreen() {
               style={{ color: colors.textPrimary }}
               className="font-poppins-bold text-sm"
             >
-              Personal & Medical Profile
+              {t("personalMedicalProfile")}
             </Text>
             <TouchableOpacity
               activeOpacity={0.7}
@@ -481,43 +534,43 @@ export default function ProfileScreen() {
                 style={{ color: isDark ? colors.textPrimary : "#214332" }}
                 className="font-poppins-semibold text-[11px]"
               >
-                Edit Vitals ›
+                {t("editVitals")}
               </Text>
             </TouchableOpacity>
           </View>
 
           <View style={{ borderColor: colors.divider }} className="flex-row justify-between py-2 border-b">
-            <Text style={{ color: colors.textSecondary }} className="font-poppins-medium text-xs">Age</Text>
-            <Text style={{ color: colors.textPrimary }} className="font-poppins-semibold text-xs">{profile.age} yrs</Text>
+            <Text style={{ color: colors.textSecondary }} className="font-poppins-medium text-xs">{t("age")}</Text>
+            <Text style={{ color: colors.textPrimary }} className="font-poppins-semibold text-xs">{profile.age} {t("yrs")}</Text>
           </View>
 
           <View style={{ borderColor: colors.divider }} className="flex-row justify-between py-2 border-b">
-            <Text style={{ color: colors.textSecondary }} className="font-poppins-medium text-xs">Gender</Text>
+            <Text style={{ color: colors.textSecondary }} className="font-poppins-medium text-xs">{t("gender")}</Text>
             <Text style={{ color: colors.textPrimary }} className="font-poppins-semibold text-xs">{profile.gender}</Text>
           </View>
 
           <View style={{ borderColor: colors.divider }} className="flex-row justify-between py-2 border-b">
-            <Text style={{ color: colors.textSecondary }} className="font-poppins-medium text-xs">Height</Text>
-            <Text style={{ color: colors.textPrimary }} className="font-poppins-semibold text-xs">{profile.heightCm} cm</Text>
+            <Text style={{ color: colors.textSecondary }} className="font-poppins-medium text-xs">{t("height")}</Text>
+            <Text style={{ color: colors.textPrimary }} className="font-poppins-semibold text-xs">{profile.heightCm} {t("cm")}</Text>
           </View>
 
           <View style={{ borderColor: colors.divider }} className="flex-row justify-between py-2 border-b">
-            <Text style={{ color: colors.textSecondary }} className="font-poppins-medium text-xs">Weight</Text>
-            <Text style={{ color: colors.textPrimary }} className="font-poppins-semibold text-xs">{profile.weightKg} kg</Text>
+            <Text style={{ color: colors.textSecondary }} className="font-poppins-medium text-xs">{t("weight")}</Text>
+            <Text style={{ color: colors.textPrimary }} className="font-poppins-semibold text-xs">{profile.weightKg} {t("kg")}</Text>
           </View>
 
           <View style={{ borderColor: colors.divider }} className="flex-row justify-between py-2 border-b">
-            <Text style={{ color: colors.textSecondary }} className="font-poppins-medium text-xs">Blood Group</Text>
+            <Text style={{ color: colors.textSecondary }} className="font-poppins-medium text-xs">{t("bloodGroup")}</Text>
             <Text style={{ color: colors.textPrimary }} className="font-poppins-bold text-xs">{profile.bloodGroup}</Text>
           </View>
 
           <View style={{ borderColor: colors.divider }} className="flex-row justify-between py-2 border-b">
-            <Text style={{ color: colors.textSecondary }} className="font-poppins-medium text-xs">Medical Condition</Text>
+            <Text style={{ color: colors.textSecondary }} className="font-poppins-medium text-xs">{t("medicalCondition")}</Text>
             <Text style={{ color: colors.textPrimary }} className="font-poppins-semibold text-xs">{profile.medicalCondition}</Text>
           </View>
 
           <View className="flex-row justify-between py-2">
-            <Text style={{ color: colors.textSecondary }} className="font-poppins-medium text-xs">Emergency Contact</Text>
+            <Text style={{ color: colors.textSecondary }} className="font-poppins-medium text-xs">{t("emergencyContact")}</Text>
             <View className="items-end">
               <Text style={{ color: colors.textPrimary }} className="font-poppins-semibold text-xs">
                 {profile.emergencyContactName}
@@ -544,10 +597,10 @@ export default function ProfileScreen() {
               </View>
               <View>
                 <Text style={{ color: colors.textPrimary }} className="font-poppins-bold text-sm">
-                  Data Storage & Retention
+                  {t("dataStorageRetention")}
                 </Text>
                 <Text style={{ color: colors.textSecondary }} className="font-poppins-regular text-[11px]">
-                  Testing Cleanup & 6-Month Rollup Policy
+                  {t("testingCleanupPolicy")}
                 </Text>
               </View>
             </View>
@@ -566,7 +619,7 @@ export default function ProfileScreen() {
                 {storageStats.readingsCount}
               </Text>
               <Text style={{ color: colors.textSecondary }} className="font-poppins-regular text-[10px]">
-                Raw Readings
+                {t("rawReadings")}
               </Text>
             </View>
             <View style={{ width: 1, height: 24, backgroundColor: colors.divider }} />
@@ -575,7 +628,7 @@ export default function ProfileScreen() {
                 {storageStats.alertsCount}
               </Text>
               <Text style={{ color: colors.textSecondary }} className="font-poppins-regular text-[10px]">
-                Alerts Logged
+                {t("alertsLogged")}
               </Text>
             </View>
             <View style={{ width: 1, height: 24, backgroundColor: colors.divider }} />
@@ -584,7 +637,7 @@ export default function ProfileScreen() {
                 {storageStats.summariesCount}
               </Text>
               <Text style={{ color: colors.textSecondary }} className="font-poppins-regular text-[10px]">
-                Archived (6+ Mo)
+                {t("archived6Mo")}
               </Text>
             </View>
           </View>
@@ -606,7 +659,7 @@ export default function ProfileScreen() {
               ) : (
                 <>
                   <Text className="font-poppins-semibold text-xs text-[#DC2626]">
-                    Erase All Test Data
+                    {t("eraseAllTestData")}
                   </Text>
                 </>
               )}
@@ -627,7 +680,7 @@ export default function ProfileScreen() {
               ) : (
                 <>
                   <Text style={{ color: isDark ? "#93C5FD" : "#0369A1" }} className="font-poppins-semibold text-xs">
-                    Archive & Prune
+                    {t("archiveAndPrune")}
                   </Text>
                 </>
               )}
@@ -647,7 +700,7 @@ export default function ProfileScreen() {
             style={{ color: colors.textPrimary }}
             className="font-poppins-bold text-sm mb-3"
           >
-            Safety, Companion & Privacy Hub
+            {t("safetyCompanionPrivacy")}
           </Text>
 
           {/* 1. Trust & Privacy */}
@@ -663,10 +716,10 @@ export default function ProfileScreen() {
               </View>
               <View className="flex-1">
                 <Text style={{ color: colors.textPrimary }} className="font-poppins-semibold text-xs">
-                  Trust & Privacy
+                  {t("trustPrivacy")}
                 </Text>
                 <Text style={{ color: colors.textMuted }} className="font-poppins-regular text-[11px]">
-                  100% on-device guarantee & data sharing toggles
+                  {t("trustPrivacySub")}
                 </Text>
               </View>
             </View>
@@ -686,10 +739,10 @@ export default function ProfileScreen() {
               </View>
               <View className="flex-1">
                 <Text style={{ color: colors.textPrimary }} className="font-poppins-semibold text-xs">
-                  Caregiver & Family Companion
+                  {t("caregiverFamily")}
                 </Text>
                 <Text style={{ color: colors.textMuted }} className="font-poppins-regular text-[11px]">
-                  Mirrored home status & family members list
+                  {t("caregiverFamilySub")}
                 </Text>
               </View>
             </View>
@@ -709,10 +762,10 @@ export default function ProfileScreen() {
               </View>
               <View className="flex-1">
                 <Text style={{ color: colors.textPrimary }} className="font-poppins-semibold text-xs">
-                  ASHA / PHC Rapid Response
+                  {t("ashaRapidResponse")}
                 </Text>
                 <Text style={{ color: colors.textMuted }} className="font-poppins-regular text-[11px]">
-                  Community patient roster sorted by risk
+                  {t("ashaRapidResponseSub")}
                 </Text>
               </View>
             </View>
@@ -731,10 +784,10 @@ export default function ProfileScreen() {
               </View>
               <View className="flex-1">
                 <Text style={{ color: colors.textPrimary }} className="font-poppins-semibold text-xs">
-                  Disaster-Specific Modes
+                  {t("disasterSpecificModes")}
                 </Text>
                 <Text style={{ color: colors.textMuted }} className="font-poppins-regular text-[11px]">
-                  Heat wave daily plan, AQI & flood advisory
+                  {t("disasterSpecificModesSub")}
                 </Text>
               </View>
             </View>
@@ -756,7 +809,7 @@ export default function ProfileScreen() {
             style={{ color: colors.textPrimary }}
             className="font-poppins-semibold text-sm"
           >
-            Sign In to Different Account ›
+            {t("signInDifferentAccount")}
           </Text>
         </TouchableOpacity>
 
@@ -775,7 +828,7 @@ export default function ProfileScreen() {
             <ActivityIndicator size="small" color="#DC2626" />
           ) : (
             <Text className="font-poppins-semibold text-sm text-[#DC2626]">
-              Sign Out ({isOfflineUser ? "Offline Mode" : activeUserId.split("@")[0]})
+              {t("signOut")} ({isOfflineUser ? t("offlineMode") : activeUserId.split("@")[0]})
             </Text>
           )}
         </TouchableOpacity>
@@ -1104,6 +1157,12 @@ export default function ProfileScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* Language Selection Modal */}
+      <LanguageSelectorModal
+        visible={isLanguageModalOpen}
+        onClose={() => setIsLanguageModalOpen(false)}
+      />
     </SafeAreaView>
   );
 }

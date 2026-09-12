@@ -32,6 +32,7 @@ const METRIC_TYPE_MAP: Record<string, MetricKey> = {
   HUMIDITY: "moisture",
   humidity: "moisture",
   moisture: "moisture",
+  MOISTURE: "moisture",
   STEPS: "steps",
   steps: "steps",
 };

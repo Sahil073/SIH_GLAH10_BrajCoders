@@ -11,6 +11,7 @@ import {
   WalkingIcon,
   TrendChartIcon,
 } from "@/components/common/AppIcons";
+import { useLanguage } from "@/i18n/languages";
 
 interface WellnessDashboardProps {
   onSwitchToCharts?: () => void;
@@ -22,6 +23,7 @@ export const WellnessDashboard: React.FC<WellnessDashboardProps> = ({
   const { colors, isDark } = useTheme();
   const ai = useAiRisk();
   const { data } = useDashboardData();
+  const { t } = useLanguage();
 
   // Helper to map risk levels to colors & scores
   const getRiskColor = (level: "NORMAL" | "CAUTION" | "RISK") => {
@@ -64,7 +66,7 @@ export const WellnessDashboard: React.FC<WellnessDashboardProps> = ({
   const categories = [
     {
       id: "cardiac",
-      name: "Cardiac Health",
+      name: t("cardiacHealth"),
       level: ai.risks.cardiac.level,
       score: getRiskScore(ai.risks.cardiac.level),
       color: getRiskColor(ai.risks.cardiac.level),
@@ -77,7 +79,7 @@ export const WellnessDashboard: React.FC<WellnessDashboardProps> = ({
     },
     {
       id: "heat",
-      name: "Heat Strain",
+      name: t("heatStrain"),
       level: ai.risks.heat.level,
       score: getRiskScore(ai.risks.heat.level),
       color: getRiskColor(ai.risks.heat.level),
@@ -90,7 +92,7 @@ export const WellnessDashboard: React.FC<WellnessDashboardProps> = ({
     },
     {
       id: "respiratory",
-      name: "Respiratory & AQI",
+      name: t("respiratoryAqi"),
       level: ai.risks.respiratory.level,
       score: getRiskScore(ai.risks.respiratory.level),
       color: getRiskColor(ai.risks.respiratory.level),
@@ -103,7 +105,7 @@ export const WellnessDashboard: React.FC<WellnessDashboardProps> = ({
     },
     {
       id: "fall",
-      name: "Posture & Stability",
+      name: t("postureStability"),
       level: ai.risks.fall.detected ? "RISK" : "NORMAL",
       score: ai.risks.fall.detected ? 95 : 8,
       color: ai.risks.fall.detected ? "#EF4444" : "#10B981",
@@ -124,36 +126,36 @@ export const WellnessDashboard: React.FC<WellnessDashboardProps> = ({
       >
         <View style={styles.summaryHeaderRow}>
           <View style={styles.summaryBadge}>
-            <Text style={styles.summaryBadgeText}>TODAY'S WELLNESS REPORT</Text>
+            <Text style={styles.summaryBadgeText}>{t("todayWellnessReport")}</Text>
           </View>
           <Text style={[styles.summaryTimeText, { color: colors.textMuted }]}>
-            On-Device Engine • 9:41 AM
+            {t("onDeviceEngine")} • 9:41 AM
           </Text>
         </View>
 
         <Text style={[styles.summaryHeadline, { color: colors.textPrimary }]}>
-          "Today was a stable, low-stress day. Your resting heart rate stayed close to your healthy baseline."
+          "{t("wellnessStableHeadline")}"
         </Text>
 
         <View style={styles.summaryStatsRow}>
           <View style={styles.statPill}>
-            <Text style={styles.statPillLabel}>Avg Heart Rate</Text>
+            <Text style={styles.statPillLabel}>{t("statAvg")} {t("metricHeartRate")}</Text>
             <Text style={[styles.statPillValue, { color: colors.textPrimary }]}>
               {data.heartRate.value > 0 ? `${Math.round(data.heartRate.value)} bpm` : "72 bpm"}
             </Text>
           </View>
 
           <View style={styles.statPill}>
-            <Text style={styles.statPillLabel}>Blood Oxygen</Text>
+            <Text style={styles.statPillLabel}>{t("metricBloodOxygen")}</Text>
             <Text style={[styles.statPillValue, { color: colors.textPrimary }]}>
               {data.spo2.value > 0 ? `${Math.round(data.spo2.value)}%` : "98%"}
             </Text>
           </View>
 
           <View style={styles.statPill}>
-            <Text style={styles.statPillLabel}>Thermal Stress</Text>
+            <Text style={styles.statPillLabel}>{t("heatStrain")}</Text>
             <Text style={[styles.statPillValue, { color: "#10B981" }]}>
-              Minimal
+              {t("statGood")}
             </Text>
           </View>
         </View>

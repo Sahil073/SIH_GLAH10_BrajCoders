@@ -58,8 +58,20 @@ export async function initDatabase(): Promise<boolean> {
 /**
  * Safe wrapper for inserting a sensor reading scoped to a user.
  */
+export type AllowedSensorType =
+  | "HR"
+  | "TEMP"
+  | "HUMIDITY"
+  | "MOISTURE"
+  | "AQI"
+  | "STEPS"
+  | "HRV_SDNN"
+  | "HRV_RMSSD"
+  | "SpO2"
+  | (string & {});
+
 export async function safeInsertReading(
-  sensorType: "HR" | "TEMP" | "HUMIDITY" | "AQI" | "STEPS" | "HRV_SDNN" | "HRV_RMSSD" | "SpO2",
+  sensorType: AllowedSensorType,
   value: number,
   source: string = "garment",
   userId: string = "offline_local"
@@ -75,7 +87,7 @@ export async function safeInsertReading(
  * Safe wrapper for inserting an alert record scoped to a user.
  */
 export async function safeInsertAlert(
-  category: "CARDIAC" | "HEAT" | "RESPIRATORY" | "FALL" | "SYSTEM",
+  category: "CARDIAC" | "HEAT" | "RESPIRATORY" | "FALL" | "VITALS" | "SYSTEM" | string,
   severity: "LOW" | "MODERATE" | "HIGH" | "CRITICAL",
   message: string,
   userId: string = "offline_local"

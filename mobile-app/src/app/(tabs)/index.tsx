@@ -23,7 +23,9 @@ import { StatusOrb, TrafficLightStatus } from "@/components/dashboard/StatusOrb"
 import { LiveVitalsGrid } from "@/components/dashboard/LiveVitalsGrid";
 import { ESP32StatusCard } from "@/components/dashboard/ESP32StatusCard";
 import { RealtimeEcgMonitor } from "@/components/dashboard/RealtimeEcgMonitor";
-import { SunIcon, BoltIcon } from "@/components/common/AppIcons";
+import { SunIcon, BoltIcon, GlobeIcon } from "@/components/common/AppIcons";
+import { useLanguage } from "@/i18n/languages";
+import { LanguageSelectorModal } from "@/components/common/LanguageSelectorModal";
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -42,6 +44,10 @@ export default function HomeScreen() {
 
   // Toggle for collapsible advanced telemetry section
   const [showAdvancedTelemetry, setShowAdvancedTelemetry] = useState(false);
+
+  // Multi-language localization hook and modal state
+  const { t } = useLanguage();
+  const [isLanguageModalOpen, setIsLanguageModalOpen] = useState(false);
 
   // Derive Traffic Light Status according to AGENTS.md §4.2 specifications:
   // - Green: Normal / Safe
@@ -117,7 +123,7 @@ export default function HomeScreen() {
                   style={[styles.greetingText, { color: colors.textSecondary }]}
                   numberOfLines={1}
                 >
-                  Hello, {displayName}
+                  {t("hello")}, {displayName}
                 </Text>
 
                 {/* Persistent Working Offline / Connected Indicator (Feature 4 - AGENTS.md §4.2) */}
@@ -134,13 +140,13 @@ export default function HomeScreen() {
                       { color: isConnected ? "#15803D" : "#B45309" },
                     ]}
                   >
-                    {isConnected ? "Connected (Live BLE)" : "Working Offline (On-Device)"}
+                    {isConnected ? t("connectedBle") : t("workingOffline")}
                   </Text>
                 </View>
               </View>
             </TouchableOpacity>
 
-            {/* Date Pill & Theme Switcher */}
+            {/* Date Pill, Language Selector & Theme Switcher */}
             <View style={styles.headerActions}>
               <View
                 style={[
@@ -158,6 +164,17 @@ export default function HomeScreen() {
 
               <TouchableOpacity
                 activeOpacity={0.75}
+                onPress={() => setIsLanguageModalOpen(true)}
+                style={[
+                  styles.themeButton,
+                  { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, marginRight: 8 },
+                ]}
+              >
+                <GlobeIcon size={18} color="#16A34A" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.75}
                 onPress={toggleTheme}
                 style={[
                   styles.themeButton,
@@ -169,11 +186,13 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          {/* FEATURE 1, 2 & 5: TOP OF SCREEN - TRAFFIC-LIGHT STATUS ORB & PLAIN-LANGUAGE MESSAGE */}
+          {/* ESP32 Wearable Device Card with Connect / Disconnect Button */}
+          <ESP32StatusCard hasHistoricalData={hasHistoricalData} />
+
+          {/* TOP STATUS WINDOW (Showing strictly the active state: Normal, Caution, or Risk) */}
           <StatusOrb
             status={currentStatus}
-            onStatusChange={(newStatus) => setDemoStatusOverride(newStatus)}
-            showSimControls={true}
+            onPress={() => router.push("/(tabs)/wellness" as any)}
           />
 
           {/* ITEM 3: DISASTER ALERT BANNER (Auto-activating / one-tap disaster plan) */}
@@ -187,19 +206,17 @@ export default function HomeScreen() {
                 <SunIcon size={18} color="#D97706" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.disasterBannerTitle}>Heat Wave Advisory Active</Text>
-                <Text style={styles.disasterBannerSub}>
-                  Safe hours plan: Work before 10 AM, after 5 PM ›
-                </Text>
+                <Text style={styles.disasterBannerTitle}>{t("heatWaveTitle")}</Text>
+                <Text style={styles.disasterBannerSub}>{t("heatWaveSub")}</Text>
               </View>
             </View>
             <Text style={styles.disasterArrow}>›</Text>
           </TouchableOpacity>
 
-          {/* FEATURE 3: LIVE VITAL READINGS (HR, SpO2, Temperature, AQI) */}
+          {/* FEATURE 3: LIVE VITAL READINGS (HR, Moisture, Temperature, AQI) */}
           <LiveVitalsGrid
             heartRate={data.heartRate.value}
-            spo2={data.spo2.value}
+            moisture={data.moisture.value}
             temperature={data.temperature.value}
             aqi={data.aqi.value}
             isConnected={isConnected}
@@ -223,11 +240,11 @@ export default function HomeScreen() {
                 <Text
                   style={[styles.collapsibleTitle, { color: colors.textPrimary }]}
                 >
-                  Advanced Telemetry & Oscilloscope
+                  {t("oscilloscopeTitle")}
                 </Text>
               </View>
               <Text style={[styles.collapsibleToggleText, { color: colors.textMuted }]}>
-                {showAdvancedTelemetry ? "Hide ▲" : "Show ▼"}
+                {showAdvancedTelemetry ? t("hide") : t("show")}
               </Text>
             </TouchableOpacity>
 
@@ -235,9 +252,6 @@ export default function HomeScreen() {
               <View style={styles.advancedContent}>
                 {/* Real-time 500 Hz ECG Oscilloscope Monitor */}
                 <RealtimeEcgMonitor />
-
-                {/* ESP32 Bluetooth Status & Diagnostics Card */}
-                <ESP32StatusCard hasHistoricalData={hasHistoricalData} />
               </View>
             )}
           </View>
@@ -252,6 +266,12 @@ export default function HomeScreen() {
           onClose={() => setActiveDetailMetric(null)}
         />
       )}
+
+      {/* Language Selection Modal */}
+      <LanguageSelectorModal
+        visible={isLanguageModalOpen}
+        onClose={() => setIsLanguageModalOpen(false)}
+      />
     </SafeAreaView>
   );
 }

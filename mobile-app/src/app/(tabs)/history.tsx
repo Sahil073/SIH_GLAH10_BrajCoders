@@ -26,6 +26,7 @@ import {
 import { WalkingPersonIcon } from "@/components/dashboard/ModernDashboardIcons";
 import { WellnessDashboard } from "@/components/wellness/WellnessDashboard";
 import { LeafIcon, TrendChartIcon, InfoIcon } from "@/components/common/AppIcons";
+import { useLanguage } from "@/i18n/languages";
 
 type PeriodTab = "day" | "week" | "month";
 type HistoryViewMode = "wellness" | "charts";
@@ -63,7 +64,40 @@ const INITIAL_EMPTY_DATASET: HistoryDataset & { hasData: boolean; totalReadingsC
 export default function HistoryScreen() {
   const { colors, isDark } = useTheme();
   const { activeUserId } = useUserProfile();
+  const { t } = useLanguage();
   const [period, setPeriod] = useState<PeriodTab>("day");
+
+  const getLocalizedMetricLabel = (key: MetricKey) => {
+    switch (key) {
+      case "hr":
+        return t("metricHeartRate");
+      case "spo2":
+        return t("metricBloodOxygen");
+      case "temp":
+        return t("metricBodyTemp");
+      case "aqi":
+        return t("metricAqi");
+      case "moisture":
+        return t("metricSkinMoisture");
+      case "steps":
+        return t("metricActivity");
+    }
+  };
+
+  const getLocalizedStatus = (status: string) => {
+    switch (status) {
+      case "Normal":
+        return t("statNormal");
+      case "Good":
+        return t("statGood");
+      case "Caution":
+        return t("statCaution");
+      case "High":
+        return t("statHigh");
+      default:
+        return status;
+    }
+  };
   const [viewMode, setViewMode] = useState<HistoryViewMode>("wellness");
   const [selectedDate, setSelectedDate] = useState<Date>(new Date()); // Today's real date
   const [calendarVisible, setCalendarVisible] = useState<boolean>(false);
@@ -204,7 +238,7 @@ export default function HistoryScreen() {
                 },
               ]}
             >
-              Personal Wellness
+              {t("personalWellness")}
             </Text>
           </TouchableOpacity>
 
@@ -236,7 +270,7 @@ export default function HistoryScreen() {
                 },
               ]}
             >
-              Historical Charts
+              {t("historicalCharts")}
             </Text>
           </TouchableOpacity>
         </View>
@@ -260,9 +294,9 @@ export default function HistoryScreen() {
               {(["day", "week", "month"] as const).map((tab) => {
                 const isSelected = period === tab;
                 const labels = {
-                  day: "Day",
-                  week: "Week",
-                  month: "Month",
+                  day: t("periodDay"),
+                  week: t("periodWeek"),
+                  month: t("periodMonth"),
                 };
 
                 return (
@@ -375,13 +409,13 @@ export default function HistoryScreen() {
             style={{ color: colors.textPrimary }}
             className="font-poppins-bold text-base"
           >
-            All 6 Metrics Overview
+            {t("allMetricsOverview")}
           </Text>
           <Text
             style={{ color: colors.textMuted }}
             className="font-poppins-regular text-xs"
           >
-            {dataset.hasData ? `${dataset.totalReadingsCount} records` : "No Records"}
+            {dataset.hasData ? `${dataset.totalReadingsCount} ${t("records")}` : t("noRecords")}
           </Text>
         </View>
 
@@ -401,7 +435,7 @@ export default function HistoryScreen() {
               style={{ color: colors.textMuted }}
               className="font-poppins-regular text-xs flex-1 leading-4"
             >
-              No sensor telemetry recorded in SQLite for this timeframe. Connect wearable to sync live data.
+              {t("noTelemetryRecorded")}
             </Text>
           </View>
         )}
@@ -439,7 +473,7 @@ export default function HistoryScreen() {
                       style={{ color: colors.textSecondary }}
                       className="font-poppins-medium text-[10px]"
                     >
-                      {hasValue ? summary.status : "No Data"}
+                      {hasValue ? getLocalizedStatus(summary.status) : t("statNoData")}
                     </Text>
                   </View>
                 </View>
@@ -449,7 +483,7 @@ export default function HistoryScreen() {
                   style={{ color: colors.textMuted }}
                   className="font-poppins-medium text-xs"
                 >
-                  {config.label}
+                  {getLocalizedMetricLabel(key)}
                 </Text>
 
                 {/* Main value */}
@@ -479,13 +513,13 @@ export default function HistoryScreen() {
                     style={{ color: colors.textMuted }}
                     className="font-poppins-regular text-[10px]"
                   >
-                    Min: {summary.min}
+                    {t("statMin")}: {summary.min}
                   </Text>
                   <Text
                     style={{ color: colors.textMuted }}
                     className="font-poppins-regular text-[10px]"
                   >
-                    Max: {summary.max}
+                    {t("statMax")}: {summary.max}
                   </Text>
                 </View>
               </View>

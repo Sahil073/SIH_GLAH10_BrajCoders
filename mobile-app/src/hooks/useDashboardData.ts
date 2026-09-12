@@ -3,7 +3,8 @@ import { initialDashboardData } from "@/data/mockDashboardData";
 import { DashboardData } from "@/types/dashboard";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAiRisk } from "@/store/aiStore";
-import { fetchAllSensorAverages, fetchSensorHistory } from "@/database";
+import { fetchAllSensorAverages, fetchSensorHistory, safeInsertReading } from "@/database";
+import { evaluateAllSixParameters } from "@/services/alertEngine";
 
 function computeHeatIndex(
   tempC: number,
@@ -36,10 +37,11 @@ function computeAqi(rawAdc: number): { value: number; label: string } {
 
 function computeMoisture(rawAdc: number): { value: number; label: string } {
   if (rawAdc <= 0) return { value: 0, label: "--" };
-  const val = Math.max(0, Math.min(100, Math.round((rawAdc / 4095) * 100)));
-  let label = "Normal";
+  // Reversed: Capacitive/resistive moisture sensor reads high ADC (~4095) when dry, and low ADC when wet
+  const val = Math.max(0, Math.min(100, Math.round((1 - rawAdc / 4095) * 100)));
+  let label = "Optimal";
   if (val > 75) label = "High";
-  else if (val < 25) label = "Low";
+  else if (val < 25) label = "Dry";
   return { value: val, label };
 }
 
@@ -70,6 +72,10 @@ export function useDashboardData() {
   // Fixed interval throttle (2000ms) for secondary sensor card updates
   const lastSecondaryUpdateRef = useRef<number>(0);
   const SECONDARY_INTERVAL_MS = 2000;
+
+  // Fixed interval throttle (2500ms) for persisting real-time telemetry to SQLite
+  const lastDbSaveRef = useRef<number>(0);
+  const DB_SAVE_INTERVAL_MS = 2500;
 
   // When disconnected or no live packets, fetch real historical session averages from SQLite scoped to active user
   useEffect(() => {
@@ -317,9 +323,44 @@ export function useDashboardData() {
         };
       }
 
+      // Persist real-time sensor readings into local SQLite database for history, charts, and offline recall
+      const nowMsTime = Date.now();
+      if (nowMsTime - lastDbSaveRef.current >= DB_SAVE_INTERVAL_MS) {
+        lastDbSaveRef.current = nowMsTime;
+
+        if (next.heartRate.value > 30 && next.heartRate.value < 240) {
+          safeInsertReading("HR", next.heartRate.value, "garment", activeUserId);
+        }
+        if (next.temperature.value > 0) {
+          safeInsertReading("TEMP", next.temperature.value, "garment", activeUserId);
+        }
+        if (next.moisture.value > 0) {
+          safeInsertReading("HUMIDITY", next.moisture.value, "garment", activeUserId);
+          safeInsertReading("MOISTURE", next.moisture.value, "garment", activeUserId);
+        }
+        if (next.aqi.value > 0) {
+          safeInsertReading("AQI", next.aqi.value, "garment", activeUserId);
+        }
+        if (next.activity.steps > 0) {
+          safeInsertReading("STEPS", next.activity.steps, "garment", activeUserId);
+        }
+
+        // Evaluate all 6 vital & environmental parameters for alert generation + in-app notification
+        void evaluateAllSixParameters({
+          heartRate: next.heartRate.value,
+          temperature: next.temperature.value,
+          moisture: next.moisture.value,
+          aqi: next.aqi.value,
+          heatIndex: next.heatIndex.value,
+          steps: next.activity.steps,
+          fallDetected: Boolean(ai.risks.fall.detected),
+          userId: activeUserId,
+        });
+      }
+
       return next;
     });
-  }, [connectionStatus, sensorData, ai]);
+  }, [connectionStatus, sensorData, ai, activeUserId]);
 
   const refreshData = useCallback(async () => {
     setIsLoading(true);

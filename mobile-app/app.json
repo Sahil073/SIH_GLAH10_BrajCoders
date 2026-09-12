@@ -22,7 +22,7 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.brajcoders.sanjeevni",
+      "package": "com.pawan9058.sanjeevniworkspace",
       "permissions": [
         "android.permission.BLUETOOTH",
         "android.permission.BLUETOOTH_ADMIN",
@@ -71,7 +71,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "02f38f14-9858-4107-8105-14bf83fdf60b"
+        "projectId": "18e27d96-3819-4226-98c2-23302fdef55d"
       }
     }
   }

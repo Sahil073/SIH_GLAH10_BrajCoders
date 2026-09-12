@@ -13,30 +13,39 @@ import { useBle } from "@/ble";
 import { useTheme } from "@/store/themeStore";
 import { useAiRisk } from "@/store/aiStore";
 import { HeartIcon } from "@/components/common/AppIcons";
+import { ECGFilterChain } from "../../../ai-engine/ecg/filters";
+import { useLanguage } from "@/i18n/languages";
 
 const MONITOR_WIDTH = 340;
 const MONITOR_HEIGHT = 160;
-const BUFFER_CAPACITY = 300; // ~0.6s window at 500 Hz, provides crisp clinical QRS visualization
+const MAX_DISPLAY_POINTS = 140; // ~140 points across 340px width (~2.4px per point) for crisp clinical trace
 
 export function RealtimeEcgMonitor() {
   const { colors, isDark } = useTheme();
   const { connectionStatus, isSimulating } = useBle();
   const ai = useAiRisk();
+  const { t } = useLanguage();
 
   const isConnected = connectionStatus === "connected";
   const [qrsBeat, setQrsBeat] = useState(false);
   const [displayBpm, setDisplayBpm] = useState<number | null>(null);
 
-  // Buffer of incoming raw biopotential samples
+  // Digital Signal Processing: 0.5-40Hz Bandpass + 50Hz Notch Filter
+  const filterChainRef = useRef(new ECGFilterChain());
+
+  // Rolling buffer of conditioned biopotential samples
   const samplesRef = useRef<number[]>([]);
-  const [, setFrameTick] = useState(0);
+  const [frameTick, setFrameTick] = useState(0);
+  const lastUpdateRef = useRef(0);
+  const qrsDebounceRef = useRef(false);
 
   // Sync BPM from AI Pan-Tompkins engine and clear buffer on disconnect
   useEffect(() => {
     if (!isConnected) {
       samplesRef.current = [];
+      filterChainRef.current.reset();
       setDisplayBpm(null);
-      setFrameTick((t) => (t + 1) % 1000);
+      setFrameTick((t) => t + 1);
     } else if (ai.heartRate && ai.heartRate > 35 && ai.heartRate < 220) {
       setDisplayBpm(Math.round(ai.heartRate));
     }
@@ -46,23 +55,46 @@ export function RealtimeEcgMonitor() {
   useEffect(() => {
     const unsubscribe = bleService.addPacketListener((packet: Esp32Packet) => {
       if (packet.sensor === SensorId.EXG && packet.samples && packet.samples.length > 0) {
-        // Append incoming chunk (e.g. 128 samples)
+        // Filter raw samples to remove DC baseline wander and 50 Hz powerline hum
+        const now = Date.now();
+        const rate = packet.rate || 500;
+        const filtered = filterChainRef.current.process({
+          samples: packet.samples,
+          sampleRate: rate,
+          timestampStart: now - (packet.samples.length * 1000) / rate,
+          timestampEnd: now,
+        });
+
+        // Decimate to display rate (e.g. 500Hz -> ~166Hz) to prevent cramped clutter
+        const step = (packet.rate || 500) > 300 ? 3 : 1;
+        const downsampled: number[] = [];
+        for (let i = 0; i < filtered.filteredSamples.length; i += step) {
+          downsampled.push(filtered.filteredSamples[i]);
+        }
+
+        // Append to rolling display buffer
         const current = samplesRef.current;
-        current.push(...packet.samples);
-        if (current.length > BUFFER_CAPACITY) {
-          samplesRef.current = current.slice(-BUFFER_CAPACITY);
+        current.push(...downsampled);
+        if (current.length > MAX_DISPLAY_POINTS) {
+          samplesRef.current = current.slice(-MAX_DISPLAY_POINTS);
         }
 
-        // QRS beat pulse visual trigger
-        const maxVal = Math.max(...packet.samples);
-        const minVal = Math.min(...packet.samples);
-        if (maxVal - minVal > 280) {
+        // Visual QRS beat pulse trigger with debounce
+        const maxFiltered = Math.max(...filtered.filteredSamples);
+        if (maxFiltered > 220 && !qrsDebounceRef.current) {
+          qrsDebounceRef.current = true;
           setQrsBeat(true);
-          setTimeout(() => setQrsBeat(false), 180);
+          setTimeout(() => setQrsBeat(false), 160);
+          setTimeout(() => {
+            qrsDebounceRef.current = false;
+          }, 320);
         }
 
-        // Trigger isolated canvas re-render (bypassing full dashboard re-renders)
-        setFrameTick((t) => (t + 1) % 1000);
+        // Throttle canvas re-renders to ~33 FPS for smooth updating without lag
+        if (now - lastUpdateRef.current > 30) {
+          lastUpdateRef.current = now;
+          setFrameTick((t) => (t + 1) % 10000);
+        }
       }
     });
 
@@ -71,47 +103,64 @@ export function RealtimeEcgMonitor() {
     };
   }, []);
 
-  // Compute SVG path from rolling circular biopotential buffer
-  const { pathString, hasData } = useMemo(() => {
+  // Compute SVG path from rolling filtered biopotential buffer
+  const { pathString, hasData, lastPoint } = useMemo(() => {
     const samples = samplesRef.current;
-    if (!isConnected || samples.length < 10) {
-      return { pathString: "", hasData: false };
+    if (!isConnected || samples.length < 8) {
+      return { pathString: "", hasData: false, lastPoint: null };
     }
 
-    // Dynamic auto-scaling with clamp
-    let min = Infinity;
-    let max = -Infinity;
+    // Baseline calculation to center waveform in viewport
+    let sum = 0;
     for (let i = 0; i < samples.length; i++) {
-      const v = samples[i];
-      if (v < min) min = v;
-      if (v > max) max = v;
+      sum += samples[i];
+    }
+    const baseline = sum / samples.length;
+
+    // Determine scale based on max amplitude deviation (with floor to avoid noise blow-up)
+    let maxDev = 120;
+    for (let i = 0; i < samples.length; i++) {
+      const dev = Math.abs(samples[i] - baseline);
+      if (dev > maxDev) maxDev = dev;
     }
 
-    const range = Math.max(max - min, 150); // Minimum scale to prevent noise amplification
-    const paddingY = 16;
-    const usableH = MONITOR_HEIGHT - paddingY * 2;
+    const centerY = MONITOR_HEIGHT / 2;
+    const usableHalfH = MONITOR_HEIGHT / 2 - 16;
+    const scale = usableHalfH / maxDev;
     const stepX = MONITOR_WIDTH / Math.max(samples.length - 1, 1);
 
     let d = "";
+    let lastX = 0;
+    let lastY = centerY;
+
     for (let i = 0; i < samples.length; i++) {
       const x = i * stepX;
-      const normalized = (samples[i] - min) / range;
-      const y = MONITOR_HEIGHT - paddingY - normalized * usableH;
+      // Invert so positive R-peak spikes upward
+      const rawY = centerY - (samples[i] - baseline) * scale;
+      const y = Math.max(8, Math.min(MONITOR_HEIGHT - 8, rawY));
 
-      if (Number.isFinite(x) && Number.isFinite(y)) {
-        d += i === 0 ? `M ${x.toFixed(1)} ${y.toFixed(1)}` : ` L ${x.toFixed(1)} ${y.toFixed(1)}`;
+      if (i === 0) {
+        d += `M ${x.toFixed(1)} ${y.toFixed(1)}`;
+      } else {
+        d += ` L ${x.toFixed(1)} ${y.toFixed(1)}`;
       }
+      lastX = x;
+      lastY = y;
     }
 
-    return { pathString: d, hasData: true };
-  }, [isConnected, samplesRef.current.length, setFrameTick]);
+    return {
+      pathString: d,
+      hasData: true,
+      lastPoint: { x: lastX, y: lastY },
+    };
+  }, [isConnected, frameTick]);
 
   // SQI classification
   const sqiScore = Math.round(ai.signalQuality.ecg || (isConnected ? 88 : 0));
   const sqiLabel = sqiScore > 75 ? "Clinical Grade" : sqiScore > 40 ? "Usable" : "Noisy Signal";
 
   return (
-    <View className="px-6 mb-5">
+    <View className="w-full mb-4">
       <View
         style={{
           backgroundColor: isDark ? "#140A0D" : "#1A090D",
@@ -220,14 +269,24 @@ export function RealtimeEcgMonitor() {
 
             {/* Live Waveform or Standby Flatline */}
             {hasData && pathString ? (
-              <Path
-                d={pathString}
-                fill="none"
-                stroke="url(#ecgGlow)"
-                strokeWidth={2.4}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
+              <>
+                <Path
+                  d={pathString}
+                  fill="none"
+                  stroke="url(#ecgGlow)"
+                  strokeWidth={2.0}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                {lastPoint && (
+                  <Circle
+                    cx={lastPoint.x}
+                    cy={lastPoint.y}
+                    r={3.2}
+                    fill="#FB7185"
+                  />
+                )}
+              </>
             ) : (
               <>
                 {/* Standby Calm Baseline with Center Blip */}
@@ -256,13 +315,13 @@ export function RealtimeEcgMonitor() {
               <View className="bg-rose-950/80 px-3 py-1.5 rounded-full border border-rose-800/60 flex-row items-center mb-1">
                 <View className="w-2 h-2 rounded-full bg-rose-500 mr-2 animate-pulse" />
                 <Text className="font-poppins-semibold text-xs text-rose-200">
-                  {isConnected ? "Awaiting 500 Hz EXG Packets..." : "Wearable Stream Standby"}
+                  {isConnected ? t("ecgAwaiting") : t("ecgStandby")}
                 </Text>
               </View>
               <Text className="font-poppins-regular text-[11px] text-rose-300/70 text-center">
                 {isConnected
-                  ? "Aligning BioAmp electrodes to skin surface"
-                  : "Connect ESP32 or toggle simulation in Profile to view live ECG trace"}
+                  ? t("ecgAligning")
+                  : t("ecgConnectPrompt")}
               </Text>
             </View>
           )}
@@ -281,7 +340,7 @@ export function RealtimeEcgMonitor() {
           <View className="flex-row items-center">
             <View className="w-1.5 h-1.5 rounded-full bg-rose-400 mr-1.5" />
             <Text className="text-[10.5px] font-poppins-semibold text-rose-300">
-              {isSimulating ? "Simulated Signal" : isConnected ? "Real Biopotential" : "Offline"}
+              {isSimulating ? t("simulatedSignal") : isConnected ? t("realBiopotential") : t("offline")}
             </Text>
           </View>
         </View>

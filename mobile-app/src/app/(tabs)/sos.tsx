@@ -6,29 +6,105 @@ import {
   TouchableOpacity,
   Modal,
   StyleSheet,
+  TextInput,
+  Alert,
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Circle, Path } from "react-native-svg";
-import { useUserProfile } from "@/store/userProfileStore";
+import { useUserProfile, saveUserProfile } from "@/store/userProfileStore";
 import { useTheme } from "@/store/themeStore";
+import { useDashboardData } from "@/hooks/useDashboardData";
 import {
   ShieldIcon,
   LocationPinIcon,
   CheckCircleIcon,
   BoltIcon,
+  PhoneCallIcon,
 } from "@/components/common/AppIcons";
+import {
+  dispatchSOSviaSMS,
+  getLiveCoordinates,
+  buildSOSTextMessage,
+  SOSDispatchResult,
+} from "@/services/smsService";
 
 type SOSState = "idle" | "countdown" | "delivered";
 
 export default function SOSScreen() {
   const { profile } = useUserProfile();
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
+  const { data } = useDashboardData();
 
   const [sosState, setSosState] = useState<SOSState>("idle");
   const [countdown, setCountdown] = useState<number>(10);
   const [triggerSource, setTriggerSource] = useState<"manual" | "fall">("manual");
+  const [isSending, setIsSending] = useState<boolean>(false);
+  const [lastDispatch, setLastDispatch] = useState<SOSDispatchResult | null>(null);
+
+  // Phone number state with inline editor for quick testing with personal phone
+  const [isEditingPhone, setIsEditingPhone] = useState(false);
+  const [editablePhone, setEditablePhone] = useState(
+    profile.emergencyContactPhone || "+91 98765 43210"
+  );
+
+  // Live GPS Coordinates state
+  const [coords, setCoords] = useState<{
+    latitude: number;
+    longitude: number;
+    accuracy: number;
+    isSimulated: boolean;
+  }>({
+    latitude: 28.6139,
+    longitude: 77.209,
+    accuracy: 3.2,
+    isSimulated: true,
+  });
+
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Fetch coordinates on mount
+  useEffect(() => {
+    getLiveCoordinates().then((c) => setCoords(c));
+  }, []);
+
+  // Sync profile emergency phone if changed elsewhere
+  useEffect(() => {
+    if (profile.emergencyContactPhone) {
+      setEditablePhone(profile.emergencyContactPhone);
+    }
+  }, [profile.emergencyContactPhone]);
+
+  // Actual dispatch logic: formats SMS with coordinates & vitals, then launches SMS app
+  const executeSMSDispatch = async (source: "manual" | "fall") => {
+    setIsSending(true);
+    const targetPhone = editablePhone.trim() || profile.emergencyContactPhone || "+91 98765 43210";
+
+    // Refresh coordinates immediately before dispatch
+    const currentCoords = await getLiveCoordinates();
+    setCoords(currentCoords);
+
+    const result = await dispatchSOSviaSMS({
+      recipientPhone: targetPhone,
+      recipientName: profile.emergencyContactName || "Primary Emergency Contact",
+      userName: profile.name || "Worker",
+      userAge: profile.age,
+      userGender: profile.gender,
+      bloodGroup: profile.bloodGroup,
+      medicalCondition: profile.medicalCondition,
+      latitude: currentCoords.latitude,
+      longitude: currentCoords.longitude,
+      heartRate: data.heartRate.value,
+      temperature: data.temperature.value,
+      moisture: data.moisture.value,
+      aqi: data.aqi.value,
+      triggerType: source,
+    });
+
+    setLastDispatch(result);
+    setIsSending(false);
+    setSosState("delivered");
+  };
 
   // 10-Second Countdown Timer effect
   useEffect(() => {
@@ -38,7 +114,7 @@ export default function SOSScreen() {
         setCountdown((prev) => {
           if (prev <= 1) {
             clearInterval(timerRef.current!);
-            setSosState("delivered");
+            executeSMSDispatch(triggerSource);
             return 0;
           }
           return prev - 1;
@@ -55,11 +131,21 @@ export default function SOSScreen() {
         clearInterval(timerRef.current);
       }
     };
-  }, [sosState]);
+  }, [sosState, triggerSource, editablePhone]);
 
-  const handleStartSOS = (source: "manual" | "fall" = "manual") => {
+  // Start SOS flow with countdown
+  const handleStartCountdown = (source: "manual" | "fall" = "manual") => {
     setTriggerSource(source);
     setSosState("countdown");
+  };
+
+  // Instant direct SOS dispatch without waiting 10 seconds
+  const handleInstantDispatch = (source: "manual" | "fall" = "manual") => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+    setTriggerSource(source);
+    executeSMSDispatch(source);
   };
 
   const handleCancelSOS = () => {
@@ -75,10 +161,23 @@ export default function SOSScreen() {
     setCountdown(10);
   };
 
+  const handleSavePhone = async () => {
+    const trimmed = editablePhone.trim();
+    if (!trimmed) {
+      Alert.alert("Phone Number", "Please enter a valid phone number.");
+      return;
+    }
+    await saveUserProfile({ emergencyContactPhone: trimmed });
+    setIsEditingPhone(false);
+    Alert.alert("Saved", `Emergency contact phone set to ${trimmed}`);
+  };
+
   // SVG circular progress calculation for countdown (radius = 70)
   const radius = 70;
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (circumference * (10 - countdown)) / 10;
+
+  const currentPhone = editablePhone.trim() || profile.emergencyContactPhone || "+91 98765 43210";
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
@@ -95,7 +194,7 @@ export default function SOSScreen() {
             Emergency SOS
           </Text>
           <Text style={[styles.headerSub, { color: colors.textSecondary }]}>
-            Always available offline. Broadcasts GPS coordinates and vital status via SMS.
+            Broadcasts live GPS coordinates, Google Maps link, and vital status to emergency contact via SMS.
           </Text>
         </View>
 
@@ -103,7 +202,7 @@ export default function SOSScreen() {
         <View style={styles.heroActionContainer}>
           <TouchableOpacity
             activeOpacity={0.88}
-            onPress={() => handleStartSOS("manual")}
+            onPress={() => handleInstantDispatch("manual")}
             style={styles.mainSosButton}
           >
             <View style={styles.mainSosInner}>
@@ -111,9 +210,145 @@ export default function SOSScreen() {
               <Text style={styles.mainSosSub}>PRESS FOR HELP</Text>
             </View>
           </TouchableOpacity>
+
+          {/* Quick Action Buttons: Instant Send or 10s Countdown */}
+          <View style={styles.actionButtonGroup}>
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => handleInstantDispatch("manual")}
+              style={styles.instantDispatchButton}
+            >
+              <View style={{ marginRight: 6 }}>
+                <PhoneCallIcon size={16} color="#FFFFFF" />
+              </View>
+              <Text style={styles.instantDispatchText}>
+                {isSending ? "SENDING SMS..." : "SEND EMERGENCY SMS NOW"}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => handleStartCountdown("manual")}
+              style={styles.countdownTriggerButton}
+            >
+              <Text style={styles.countdownTriggerText}>
+                ⏱ Start 10s Countdown Check
+              </Text>
+            </TouchableOpacity>
+          </View>
+
           <Text style={styles.sosHintText}>
-            Tap to start 10s emergency dispatch countdown
+            Tapping SOS sends live coordinates & vitals to {currentPhone}
           </Text>
+        </View>
+
+        {/* Recipient Phone Number Card (Stored in App) */}
+        <View
+          style={[
+            styles.card,
+            { backgroundColor: colors.cardBg, borderColor: colors.cardBorder },
+          ]}
+        >
+          <View style={styles.cardHeaderRow}>
+            <View style={styles.cardTitleWrap}>
+              <View style={styles.iconCircleBlue}>
+                <PhoneCallIcon size={16} color="#2563EB" />
+              </View>
+              <View>
+                <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>
+                  Emergency SMS Recipient
+                </Text>
+                <Text style={[styles.cardStatusSub, { color: colors.textMuted }]}>
+                  Present inside app profile
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              onPress={() => setIsEditingPhone((prev) => !prev)}
+              style={styles.editPhoneBtn}
+            >
+              <Text style={styles.editPhoneBtnText}>
+                {isEditingPhone ? "Cancel" : "Change"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {isEditingPhone ? (
+            <View style={styles.phoneEditRow}>
+              <TextInput
+                value={editablePhone}
+                onChangeText={setEditablePhone}
+                placeholder="+91 98765 43210"
+                keyboardType="phone-pad"
+                style={[
+                  styles.phoneInput,
+                  { color: colors.textPrimary, borderColor: colors.cardBorder },
+                ]}
+              />
+              <TouchableOpacity
+                onPress={handleSavePhone}
+                style={styles.savePhoneBtn}
+              >
+                <Text style={styles.savePhoneBtnText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.phoneDisplayRow}>
+              <View>
+                <Text style={[styles.phoneDisplayText, { color: colors.textPrimary }]}>
+                  {currentPhone}
+                </Text>
+                <Text style={[styles.phoneContactSub, { color: colors.textSecondary }]}>
+                  {profile.emergencyContactName || "Primary Emergency Contact"}
+                </Text>
+              </View>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => handleInstantDispatch("manual")}
+                style={styles.quickSendBadge}
+              >
+                <Text style={styles.quickSendBadgeText}>TEST SMS</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
+        {/* Location & GPS Telemetry Card */}
+        <View
+          style={[
+            styles.card,
+            { backgroundColor: colors.cardBg, borderColor: colors.cardBorder },
+          ]}
+        >
+          <View style={styles.cardHeaderRow}>
+            <View style={styles.cardTitleWrap}>
+              <View style={styles.iconCircleAmber}>
+                <LocationPinIcon size={18} color="#D97706" />
+              </View>
+              <View>
+                <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>
+                  Live Emergency Coordinates
+                </Text>
+                <Text style={[styles.cardStatusSub, { color: "#D97706" }]}>
+                  Lat: {coords.latitude.toFixed(4)}° N • Lon: {coords.longitude.toFixed(4)}° E
+                </Text>
+              </View>
+            </View>
+            <View style={styles.gpsLockPill}>
+              <Text style={styles.gpsLockText}>
+                {coords.isSimulated ? "OFFLINE GPS" : "GPS LOCKED"}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.locationDetailRow}>
+            <Text style={[styles.locationDetailText, { color: colors.textSecondary }]}>
+              Maps: https://maps.google.com/?q={coords.latitude.toFixed(4)},{coords.longitude.toFixed(4)}
+            </Text>
+            <Text style={[styles.locationDetailSub, { color: colors.textMuted }]}>
+              Accuracy: ±{coords.accuracy}m • Embedded into emergency SMS
+            </Text>
+          </View>
         </View>
 
         {/* Automatic Fall / Distress Detection Card with Simulator */}
@@ -144,14 +379,14 @@ export default function SOSScreen() {
           </View>
 
           <Text style={[styles.cardBodyText, { color: colors.textSecondary }]}>
-            If an abrupt impact followed by prolonged immobility is sensed by the smart t-shirt,
-            the app automatically initiates emergency broadcast.
+            If an abrupt impact followed by prolonged immobility is sensed by the wearable,
+            an emergency broadcast with coordinates is dispatched to your emergency contact.
           </Text>
 
           {/* Test / Simulate Button for Exhibition & Verification */}
           <TouchableOpacity
             activeOpacity={0.75}
-            onPress={() => handleStartSOS("fall")}
+            onPress={() => handleStartCountdown("fall")}
             style={styles.simulateButton}
           >
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center" }}>
@@ -161,89 +396,6 @@ export default function SOSScreen() {
               </Text>
             </View>
           </TouchableOpacity>
-        </View>
-
-        {/* Location & GPS Telemetry Card */}
-        <View
-          style={[
-            styles.card,
-            { backgroundColor: colors.cardBg, borderColor: colors.cardBorder },
-          ]}
-        >
-          <View style={styles.cardHeaderRow}>
-            <View style={styles.cardTitleWrap}>
-              <View style={styles.iconCircleAmber}>
-                <LocationPinIcon size={18} color="#D97706" />
-              </View>
-              <View>
-                <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>
-                  Live Emergency Coordinates
-                </Text>
-                <Text style={[styles.cardStatusSub, { color: colors.textMuted }]}>
-                  Lat: 28.6139° N • Lon: 77.2090° E
-                </Text>
-              </View>
-            </View>
-            <View style={styles.gpsLockPill}>
-              <Text style={styles.gpsLockText}>GPS LOCKED</Text>
-            </View>
-          </View>
-
-          <View style={styles.locationDetailRow}>
-            <Text style={[styles.locationDetailText, { color: colors.textSecondary }]}>
-              Accuracy: ±3.2m • Geohash: ttn4v • Offline SMS Ready
-            </Text>
-          </View>
-        </View>
-
-        {/* Emergency Contacts List */}
-        <View
-          style={[
-            styles.card,
-            { backgroundColor: colors.cardBg, borderColor: colors.cardBorder },
-          ]}
-        >
-          <Text style={[styles.cardTitle, { color: colors.textPrimary, marginBottom: 12 }]}>
-            Dispatched Emergency Contacts
-          </Text>
-
-          <View style={styles.contactItem}>
-            <View style={styles.contactLeft}>
-              <View style={styles.contactAvatar}>
-                <Text style={styles.contactAvatarText}>1</Text>
-              </View>
-              <View>
-                <Text style={[styles.contactName, { color: colors.textPrimary }]}>
-                  {profile.emergencyContactName || "Primary Emergency Contact"}
-                </Text>
-                <Text style={[styles.contactPhone, { color: colors.textMuted }]}>
-                  {profile.emergencyContactPhone || "+91 98765 43210"}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.smsBadge}>
-              <Text style={styles.smsBadgeText}>SMS</Text>
-            </View>
-          </View>
-
-          <View style={[styles.contactItem, { borderBottomWidth: 0 }]}>
-            <View style={styles.contactLeft}>
-              <View style={styles.contactAvatar}>
-                <Text style={styles.contactAvatarText}>2</Text>
-              </View>
-              <View>
-                <Text style={[styles.contactName, { color: colors.textPrimary }]}>
-                  Local PHC / ASHA Rapid Response
-                </Text>
-                <Text style={[styles.contactPhone, { color: colors.textMuted }]}>
-                  +91 112 (National Emergency)
-                </Text>
-              </View>
-            </View>
-            <View style={styles.smsBadge}>
-              <Text style={styles.smsBadgeText}>SMS</Text>
-            </View>
-          </View>
         </View>
       </ScrollView>
 
@@ -296,9 +448,7 @@ export default function SOSScreen() {
             </View>
 
             <Text style={styles.countdownExplanation}>
-              {triggerSource === "fall"
-                ? "The smart t-shirt detected a sudden fall. If you do not cancel, an emergency broadcast with your live coordinates will be sent."
-                : "An emergency broadcast with your current location and heart rate will be dispatched automatically."}
+              Sending live GPS coordinates ({coords.latitude.toFixed(4)}°, {coords.longitude.toFixed(4)}°) and vital metrics via SMS to {currentPhone}.
             </Text>
 
             {/* Prominent "I'm OK, Cancel" Button */}
@@ -312,10 +462,10 @@ export default function SOSScreen() {
 
             <TouchableOpacity
               activeOpacity={0.75}
-              onPress={() => setSosState("delivered")}
+              onPress={() => executeSMSDispatch(triggerSource)}
               style={styles.sendNowButton}
             >
-              <Text style={styles.sendNowButtonText}>Send Immediately ›</Text>
+              <Text style={styles.sendNowButtonText}>Send SMS Immediately ›</Text>
             </TouchableOpacity>
           </View>
         </SafeAreaView>
@@ -333,17 +483,28 @@ export default function SOSScreen() {
               <View style={styles.successIconCircle}>
                 <CheckCircleIcon size={36} color="#16A34A" />
               </View>
-              <Text style={styles.deliveredTitle}>SOS Broadcast Sent</Text>
+              <Text style={styles.deliveredTitle}>SOS Broadcast Dispatched</Text>
               <Text style={styles.deliveredSub}>
-                Emergency alert and live location dispatched via SMS
+                Coordinates, Maps link, and vitals sent to emergency phone via SMS
               </Text>
             </View>
 
             <View style={styles.smsPreviewBox}>
-              <Text style={styles.smsPreviewHeader}>SENT SMS PREVIEW:</Text>
+              <Text style={styles.smsPreviewHeader}>DISPATCHED SMS CONTENT:</Text>
               <Text style={styles.smsPreviewBody}>
-                "EMERGENCY: Sanjeevni Alert for {profile.name || "Worker"}. Fall/distress triggered.
-                GPS: 28.6139° N, 77.2090° E. HR: 114 bpm. Maps: https://maps.google.com/?q=28.6139,77.2090"
+                {lastDispatch?.body ||
+                  buildSOSTextMessage({
+                    recipientPhone: currentPhone,
+                    userName: profile.name || "Worker",
+                    bloodGroup: profile.bloodGroup,
+                    latitude: coords.latitude,
+                    longitude: coords.longitude,
+                    heartRate: data.heartRate.value,
+                    temperature: data.temperature.value,
+                    moisture: data.moisture.value,
+                    aqi: data.aqi.value,
+                    triggerType: triggerSource,
+                  })}
               </Text>
             </View>
 
@@ -351,24 +512,34 @@ export default function SOSScreen() {
               <View style={styles.recipientRow}>
                 <Text style={styles.recipientDot}>•</Text>
                 <Text style={styles.recipientText}>
-                  {profile.emergencyContactName || "Primary Contact"} ({profile.emergencyContactPhone || "+91 98765 43210"}) — Delivered
+                  Recipient: {currentPhone} ({profile.emergencyContactName || "Emergency Contact"}) — Dispatched
                 </Text>
               </View>
               <View style={styles.recipientRow}>
                 <Text style={styles.recipientDot}>•</Text>
                 <Text style={styles.recipientText}>
-                  PHC Rapid Response Team — Notified
+                  GPS: {coords.latitude.toFixed(4)}° N, {coords.longitude.toFixed(4)}° E (Google Maps Link Attached)
                 </Text>
               </View>
             </View>
 
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={handleResolveAlert}
-              style={styles.resolveButton}
-            >
-              <Text style={styles.resolveButtonText}>Mark as Resolved / I'm Safe</Text>
-            </TouchableOpacity>
+            <View style={styles.postActionRow}>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => executeSMSDispatch(triggerSource)}
+                style={styles.resendButton}
+              >
+                <Text style={styles.resendButtonText}>Open / Resend SMS</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={handleResolveAlert}
+                style={styles.resolveButton}
+              >
+                <Text style={styles.resolveButtonText}>Mark as Resolved / I'm Safe</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -387,7 +558,7 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: "center",
-    marginBottom: 20,
+    marginBottom: 16,
   },
   badge: {
     backgroundColor: "#FEE2E2",
@@ -419,16 +590,16 @@ const styles = StyleSheet.create({
   },
   heroActionContainer: {
     alignItems: "center",
-    marginVertical: 12,
+    marginVertical: 10,
   },
   mainSosButton: {
-    width: 190,
-    height: 190,
-    borderRadius: 95,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
     backgroundColor: "#DC2626",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 10,
+    borderWidth: 8,
     borderColor: "#FEE2E2",
     shadowColor: "#DC2626",
     shadowOffset: { width: 0, height: 8 },
@@ -453,11 +624,48 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginTop: 2,
   },
-  sosHintText: {
+  actionButtonGroup: {
+    width: "100%",
+    marginTop: 16,
+    alignItems: "center",
+  },
+  instantDispatchButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#DC2626",
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 14,
+    width: "100%",
+    shadowColor: "#DC2626",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  instantDispatchText: {
+    fontFamily: "Poppins-Bold",
+    fontSize: 13.5,
+    color: "#FFFFFF",
+    letterSpacing: 0.5,
+  },
+  countdownTriggerButton: {
+    paddingVertical: 8,
+    marginTop: 6,
+  },
+  countdownTriggerText: {
     fontFamily: "Poppins-Medium",
     fontSize: 12,
     color: "#6B7280",
-    marginTop: 14,
+  },
+  sosHintText: {
+    fontFamily: "Poppins-Medium",
+    fontSize: 11.5,
+    color: "#6B7280",
+    marginTop: 6,
+    textAlign: "center",
+    paddingHorizontal: 16,
   },
   card: {
     borderRadius: 20,
@@ -480,6 +688,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     flex: 1,
+  },
+  iconCircleBlue: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#DBEAFE",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
   },
   iconCircleEmerald: {
     width: 36,
@@ -507,6 +724,74 @@ const styles = StyleSheet.create({
     fontFamily: "Poppins-Medium",
     fontSize: 11,
     marginTop: 1,
+  },
+  editPhoneBtn: {
+    backgroundColor: "#F3F4F6",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  editPhoneBtnText: {
+    fontFamily: "Poppins-SemiBold",
+    fontSize: 11,
+    color: "#2563EB",
+  },
+  phoneDisplayRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: 4,
+  },
+  phoneDisplayText: {
+    fontFamily: "Poppins-Bold",
+    fontSize: 16,
+    letterSpacing: 0.5,
+  },
+  phoneContactSub: {
+    fontFamily: "Poppins-Regular",
+    fontSize: 12,
+    marginTop: 2,
+  },
+  quickSendBadge: {
+    backgroundColor: "#FEE2E2",
+    borderColor: "#FECACA",
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  quickSendBadgeText: {
+    fontFamily: "Poppins-Bold",
+    fontSize: 10,
+    color: "#DC2626",
+    letterSpacing: 0.5,
+  },
+  phoneEditRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 6,
+  },
+  phoneInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontFamily: "Poppins-Medium",
+    fontSize: 14,
+    marginRight: 8,
+    backgroundColor: "#FFFFFF",
+  },
+  savePhoneBtn: {
+    backgroundColor: "#16A34A",
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  savePhoneBtnText: {
+    fontFamily: "Poppins-Bold",
+    fontSize: 12,
+    color: "#FFFFFF",
   },
   activePill: {
     flexDirection: "row",
@@ -568,54 +853,14 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   locationDetailText: {
-    fontFamily: "Poppins-Regular",
+    fontFamily: "Poppins-Medium",
     fontSize: 11,
+    color: "#2563EB",
   },
-  contactItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
-  },
-  contactLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  contactAvatar: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: "#F3F4F6",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 10,
-  },
-  contactAvatarText: {
-    fontFamily: "Poppins-Bold",
-    fontSize: 12,
-    color: "#4B5563",
-  },
-  contactName: {
-    fontFamily: "Poppins-SemiBold",
-    fontSize: 13,
-  },
-  contactPhone: {
+  locationDetailSub: {
     fontFamily: "Poppins-Regular",
-    fontSize: 11,
-  },
-  smsBadge: {
-    backgroundColor: "#E0E7FF",
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  smsBadgeText: {
-    fontFamily: "Poppins-Bold",
-    fontSize: 10,
-    color: "#4338CA",
+    fontSize: 10.5,
+    marginTop: 2,
   },
 
   // Countdown Modal Styles
@@ -679,11 +924,11 @@ const styles = StyleSheet.create({
   },
   countdownExplanation: {
     fontFamily: "Poppins-Regular",
-    fontSize: 13.5,
+    fontSize: 13,
     color: "#D1D5DB",
     textAlign: "center",
-    lineHeight: 20,
-    marginVertical: 24,
+    lineHeight: 19,
+    marginVertical: 20,
     paddingHorizontal: 10,
   },
   cancelButton: {
@@ -725,7 +970,7 @@ const styles = StyleSheet.create({
   deliveredCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 24,
-    padding: 24,
+    padding: 22,
     width: "100%",
     maxWidth: 380,
     shadowColor: "#000",
@@ -736,25 +981,25 @@ const styles = StyleSheet.create({
   },
   deliveredHeader: {
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 14,
   },
   successIconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     backgroundColor: "#DCFCE7",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 12,
+    marginBottom: 10,
   },
   deliveredTitle: {
     fontFamily: "Poppins-Bold",
-    fontSize: 20,
+    fontSize: 19,
     color: "#111827",
   },
   deliveredSub: {
     fontFamily: "Poppins-Regular",
-    fontSize: 12.5,
+    fontSize: 12,
     color: "#6B7280",
     textAlign: "center",
     marginTop: 2,
@@ -765,7 +1010,8 @@ const styles = StyleSheet.create({
     borderColor: "#E5E7EB",
     borderRadius: 14,
     padding: 12,
-    marginVertical: 14,
+    marginVertical: 12,
+    maxHeight: 180,
   },
   smsPreviewHeader: {
     fontFamily: "Poppins-Bold",
@@ -776,39 +1022,55 @@ const styles = StyleSheet.create({
   },
   smsPreviewBody: {
     fontFamily: "Poppins-Medium",
-    fontSize: 11.5,
+    fontSize: 11,
     color: "#374151",
-    lineHeight: 16,
+    lineHeight: 15,
   },
   recipientsList: {
-    marginBottom: 20,
+    marginBottom: 16,
   },
   recipientRow: {
     flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 6,
+    alignItems: "flex-start",
+    marginBottom: 4,
   },
   recipientDot: {
     color: "#16A34A",
-    fontSize: 18,
-    marginRight: 8,
-    lineHeight: 18,
+    fontSize: 16,
+    marginRight: 6,
+    lineHeight: 16,
   },
   recipientText: {
     fontFamily: "Poppins-Medium",
-    fontSize: 12,
+    fontSize: 11.5,
     color: "#4B5563",
     flex: 1,
   },
+  postActionRow: {
+    gap: 8,
+  },
+  resendButton: {
+    backgroundColor: "#EFF6FF",
+    borderColor: "#BFDBFE",
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  resendButtonText: {
+    fontFamily: "Poppins-SemiBold",
+    fontSize: 13,
+    color: "#2563EB",
+  },
   resolveButton: {
     backgroundColor: "#16A34A",
-    borderRadius: 16,
-    paddingVertical: 14,
+    borderRadius: 14,
+    paddingVertical: 12,
     alignItems: "center",
   },
   resolveButtonText: {
     fontFamily: "Poppins-Bold",
-    fontSize: 14,
+    fontSize: 13.5,
     color: "#FFFFFF",
   },
 });
