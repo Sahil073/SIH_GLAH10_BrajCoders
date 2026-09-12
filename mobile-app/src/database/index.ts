@@ -1,6 +1,7 @@
 // =============================================================================
 // src/database/index.ts
 // Mobile App Database access layer & safe wrapper around SQLite.
+// Supports multi-user isolation (Google accounts vs Offline BLE Direct).
 // =============================================================================
 
 import {
@@ -15,10 +16,22 @@ import {
   getAlerts as rawGetAlerts,
   acknowledgeAlert as rawAcknowledgeAlert,
   getUserProfile as rawGetUserProfile,
-  upsertUserProfile as rawUpsertUserProfile,
   updateRollingBaseline as rawUpdateRollingBaseline,
   getRollingBaseline as rawGetRollingBaseline,
+  getSensorStats as rawGetSensorStats,
+  getAllSensorAverages as rawGetAllSensorAverages,
+  getSensorHistory as rawGetSensorHistory,
+  clearReadings as rawClearReadings,
+  deleteAlert as rawDeleteAlert,
+  clearAllAlerts as rawClearAllAlerts,
+  saveLocalUserProfile as rawSaveLocalUserProfile,
+  getLocalUserProfile as rawGetLocalUserProfile,
+  clearLocalUserProfile as rawClearLocalUserProfile,
+  normalizeUserId,
+  LocalUserProfile,
 } from "../../databaseConnections/database";
+
+export { normalizeUserId, LocalUserProfile };
 
 let isDbInitialized = false;
 
@@ -40,42 +53,44 @@ export async function initDatabase(): Promise<boolean> {
 }
 
 /**
- * Safe wrapper for inserting a sensor reading.
+ * Safe wrapper for inserting a sensor reading scoped to a user.
  */
 export async function safeInsertReading(
   sensorType: "HR" | "TEMP" | "HUMIDITY" | "AQI" | "STEPS" | "HRV_SDNN" | "HRV_RMSSD" | "SpO2",
   value: number,
-  source: string = "garment"
+  source: string = "garment",
+  userId: string = "offline_local"
 ): Promise<void> {
   try {
-    await rawInsertReading(sensorType, value, source);
+    await rawInsertReading(sensorType, value, source, userId);
   } catch (error) {
     console.warn(`[Database] Failed to insert reading (${sensorType}=${value}):`, error);
   }
 }
 
 /**
- * Safe wrapper for inserting an alert record.
+ * Safe wrapper for inserting an alert record scoped to a user.
  */
 export async function safeInsertAlert(
   category: "CARDIAC" | "HEAT" | "RESPIRATORY" | "FALL" | "SYSTEM",
   severity: "LOW" | "MODERATE" | "HIGH" | "CRITICAL",
-  message: string
+  message: string,
+  userId: string = "offline_local"
 ): Promise<void> {
   try {
-    await rawInsertAlert(category, severity, message);
-    console.log(`[Database] Alert logged: [${severity}] ${category} - ${message}`);
+    await rawInsertAlert(category, severity, message, userId);
+    console.log(`[Database] Alert logged for [${userId}]: [${severity}] ${category} - ${message}`);
   } catch (error) {
     console.warn(`[Database] Failed to insert alert:`, error);
   }
 }
 
 /**
- * Fetch recent alerts from SQLite.
+ * Fetch recent alerts from SQLite scoped to a user.
  */
-export async function fetchAlerts(limit: number = 25): Promise<any[]> {
+export async function fetchAlerts(limit: number = 25, userId?: string): Promise<any[]> {
   try {
-    return await rawGetAlerts(limit);
+    return await rawGetAlerts(limit, userId);
   } catch (error) {
     console.warn("[Database] Failed to fetch alerts:", error);
     return [];
@@ -94,11 +109,79 @@ export async function ackAlert(id: number): Promise<void> {
 }
 
 /**
- * Fetch user profile from SQLite.
+ * Delete a specific alert by ID.
  */
-export async function fetchUserProfile(): Promise<any> {
+export async function removeAlert(id: number): Promise<void> {
   try {
-    return await rawGetUserProfile();
+    await rawDeleteAlert(id);
+  } catch (error) {
+    console.warn(`[Database] Failed to delete alert ${id}:`, error);
+  }
+}
+
+/**
+ * Clear all alerts from SQLite for a user (or all).
+ */
+export async function removeAllAlerts(userId?: string): Promise<void> {
+  try {
+    await rawClearAllAlerts(userId);
+  } catch (error) {
+    console.warn("[Database] Failed to clear alerts:", error);
+  }
+}
+
+/**
+ * Fetch historical session averages for all key biometric sensors scoped to a user.
+ */
+export async function fetchAllSensorAverages(userId?: string) {
+  try {
+    return await rawGetAllSensorAverages(userId);
+  } catch (error) {
+    console.warn("[Database] Failed to fetch sensor averages:", error);
+    return { hr: null, temp: null, aqi: null, humidity: null, steps: null, hasData: false };
+  }
+}
+
+/**
+ * Fetch chronological readings for a sensor for accurate charting scoped to a user.
+ */
+export async function fetchSensorHistory(sensorType: string, limit: number = 20, userId?: string) {
+  try {
+    return await rawGetSensorHistory(sensorType, limit, userId);
+  } catch (error) {
+    console.warn(`[Database] Failed to fetch history for ${sensorType}:`, error);
+    return [];
+  }
+}
+
+/**
+ * Clear raw readings for a sensor type or all readings scoped to a user.
+ */
+export async function truncateReadings(sensorType?: string, userId?: string): Promise<void> {
+  try {
+    await rawClearReadings(sensorType, userId);
+  } catch (error) {
+    console.warn("[Database] Failed to clear readings:", error);
+  }
+}
+
+/**
+ * Persist user health profile and credentials into SQLite scoped by user ID.
+ */
+export async function persistLocalUserProfile(profile: LocalUserProfile, userId?: string): Promise<void> {
+  try {
+    await rawSaveLocalUserProfile(profile, userId);
+  } catch (error) {
+    console.warn("[Database] Failed to save user profile:", error);
+  }
+}
+
+/**
+ * Fetch local user health profile and credentials from SQLite scoped by user ID.
+ */
+export async function fetchLocalUserProfile(userId: string = "offline_local"): Promise<LocalUserProfile | null> {
+  try {
+    return await rawGetLocalUserProfile(userId);
   } catch (error) {
     console.warn("[Database] Failed to fetch user profile:", error);
     return null;
@@ -106,31 +189,39 @@ export async function fetchUserProfile(): Promise<any> {
 }
 
 /**
- * Upsert user profile in SQLite.
+ * Clear local user logged-in status from SQLite.
  */
-export async function saveUserProfile(
-  baselineValues: string,
-  vulnerabilityFlags: string,
-  emergencyContact: string
-): Promise<void> {
+export async function resetLocalUserProfile(userId: string = "offline_local"): Promise<void> {
   try {
-    await rawUpsertUserProfile(baselineValues, vulnerabilityFlags, emergencyContact);
+    await rawClearLocalUserProfile(userId);
   } catch (error) {
-    console.warn("[Database] Failed to save user profile:", error);
+    console.warn("[Database] Failed to reset user profile:", error);
   }
 }
 
-export {
-  rawInitDb as initDb,
-  rawInsertReading as insertReading,
-  rawInsertAlert as insertAlert,
-  rawGetAlerts as getAlerts,
-  rawAcknowledgeAlert as acknowledgeAlert,
-  rawGetUserProfile as getUserProfile,
-  rawUpsertUserProfile as upsertUserProfile,
-  rawGetRecentReadings as getRecentReadings,
-  rawGetLatestReading as getLatestReading,
-  rawUpdateRollingBaseline as updateRollingBaseline,
-  rawGetRollingBaseline as getRollingBaseline,
-};
+/**
+ * Fetch rolling baseline for AI calibration scoped to a user.
+ */
+export async function fetchRollingBaseline(metricType: string, userId: string = "offline_local"): Promise<any> {
+  try {
+    return await rawGetRollingBaseline(metricType, userId);
+  } catch (error) {
+    console.warn(`[Database] Failed to fetch baseline for ${metricType}:`, error);
+    return null;
+  }
+}
 
+/**
+ * Persist updated rolling baseline for AI calibration scoped to a user.
+ */
+export async function persistRollingBaseline(
+  metricType: string,
+  movingAverage: number,
+  userId: string = "offline_local"
+): Promise<void> {
+  try {
+    await rawUpdateRollingBaseline(metricType, movingAverage, userId);
+  } catch (error) {
+    console.warn(`[Database] Failed to update baseline for ${metricType}:`, error);
+  }
+}

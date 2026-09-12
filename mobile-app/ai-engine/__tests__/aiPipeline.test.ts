@@ -168,7 +168,7 @@ console.log('Test 6: Full End-to-End Orchestration (processSensorTick)');
 {
   resetAIEngine();
   const sampleRate = 500;
-  const durationSeconds = 4;
+  const durationSeconds = 6;
   const ecg = generateSyntheticECG({
     durationSeconds,
     sampleRate,

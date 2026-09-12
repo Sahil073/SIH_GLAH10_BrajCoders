@@ -178,7 +178,296 @@ console.log('Test 6: 7-Day Data Pruning');
   console.log('  ✔ Pruning correctly deleted readings older than 7 days');
 }
 
+// -----------------------------------------------------------------------------
+// Test 7: Sensor Statistics & Averages (AVG, MIN, MAX, COUNT)
+// -----------------------------------------------------------------------------
+console.log('Test 7: Sensor Statistics and Aggregate Averages');
+{
+  const insertStmt = db.prepare(
+    'INSERT INTO readings (timestamp, sensor_type, value, source) VALUES (?, ?, ?, ?)'
+  );
+  const now = new Date().toISOString();
+  insertStmt.run(now, 'HR', 80.0, 'garment');
+  insertStmt.run(now, 'HR', 90.0, 'garment');
+  insertStmt.run(now, 'HR', 70.0, 'garment');
+
+  const stats = db.prepare(`
+    SELECT 
+      AVG(value) as avgValue,
+      MIN(value) as minValue,
+      MAX(value) as maxValue,
+      COUNT(*) as count
+    FROM readings
+    WHERE sensor_type = ?
+  `).get('HR') as any;
+
+  assert.ok(stats.count >= 3, 'Must have at least 3 HR readings');
+  assert.strictEqual(stats.minValue, 70.0, 'Min value must match');
+  assert.strictEqual(stats.maxValue, 90.0, 'Max value must match');
+  console.log(`  ✔ Sensor aggregate statistics verified: count=${stats.count}, avg=${stats.avgValue?.toFixed(1)}`);
+}
+
+// -----------------------------------------------------------------------------
+// Test 8: Sensor History with Timestamp Ordering & Limit
+// -----------------------------------------------------------------------------
+console.log('Test 8: Sensor History with Timestamp Ordering and Limit');
+{
+  const history = db.prepare(`
+    SELECT id, timestamp, value 
+    FROM readings 
+    WHERE sensor_type = ? 
+    ORDER BY timestamp DESC, id DESC 
+    LIMIT 2
+  `).all('HR') as any[];
+
+  assert.strictEqual(history.length, 2, 'Should limit history to 2 rows');
+  assert.ok(history[0].value > 0, 'Value should be positive');
+  console.log('  ✔ Sensor history query with LIMIT verified');
+}
+
+// -----------------------------------------------------------------------------
+// Test 9: Alert Deletion and Bulk Clear CRUD
+// -----------------------------------------------------------------------------
+console.log('Test 9: Alert Deletion and Bulk Clear CRUD');
+{
+  const alertsBefore = db.prepare('SELECT COUNT(*) as count FROM alerts').get() as any;
+  assert.ok(alertsBefore.count > 0, 'Alerts should exist');
+
+  // Single alert delete
+  const firstAlert = db.prepare('SELECT id FROM alerts LIMIT 1').get() as any;
+  db.prepare('DELETE FROM alerts WHERE id = ?').run(firstAlert.id);
+  const checkDeleted = db.prepare('SELECT * FROM alerts WHERE id = ?').get(firstAlert.id);
+  assert.strictEqual(checkDeleted, undefined, 'Deleted alert should not be found');
+
+  // Clear all alerts
+  db.prepare('DELETE FROM alerts').run();
+  const alertsAfter = db.prepare('SELECT COUNT(*) as count FROM alerts').get() as any;
+  assert.strictEqual(alertsAfter.count, 0, 'All alerts should be cleared');
+  console.log('  ✔ Alert delete and clear operations verified');
+}
+
+// -----------------------------------------------------------------------------
+// Test 10: Rich User Profile CRUD & Local Session State
+// -----------------------------------------------------------------------------
+console.log('Test 10: Rich User Profile Schema and Local Session Persistence');
+{
+  // Drop and recreate user_profile with full schema for isolated test
+  db.exec(`
+    DROP TABLE IF EXISTS user_profile;
+    CREATE TABLE user_profile (
+      id INTEGER PRIMARY KEY CHECK(id = 1),
+      name TEXT DEFAULT 'Sanjeevni User',
+      email TEXT DEFAULT 'user@sanjeevni.health',
+      pin TEXT DEFAULT '',
+      age INTEGER DEFAULT 25,
+      gender TEXT DEFAULT 'Other',
+      height_cm REAL DEFAULT 170,
+      weight_kg REAL DEFAULT 65,
+      blood_group TEXT DEFAULT 'O+',
+      medical_condition TEXT DEFAULT 'None',
+      emergency_name TEXT DEFAULT 'Emergency Contact',
+      emergency_phone TEXT DEFAULT '+91 98765 43210',
+      is_logged_in INTEGER DEFAULT 1,
+      baseline_values TEXT,
+      vulnerability_flags TEXT,
+      emergency_contact TEXT
+    );
+  `);
+
+  // Insert complete profile
+  db.prepare(`
+    INSERT INTO user_profile (
+      id, name, email, pin, age, gender, height_cm, weight_kg, blood_group,
+      medical_condition, emergency_name, emergency_phone, is_logged_in
+    ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+  `).run(
+    'Shubham Jain',
+    'shubham@sanjeevni.health',
+    '9988',
+    24,
+    'Male',
+    175,
+    70,
+    'B+',
+    'Asthma',
+    'Supervisor Rajesh',
+    '+91 99999 88888'
+  );
+
+  let profile = db.prepare('SELECT * FROM user_profile WHERE id = 1').get() as any;
+  assert.strictEqual(profile.name, 'Shubham Jain');
+  assert.strictEqual(profile.email, 'shubham@sanjeevni.health');
+  assert.strictEqual(profile.pin, '9988');
+  assert.strictEqual(profile.age, 24);
+  assert.strictEqual(profile.blood_group, 'B+');
+  assert.strictEqual(profile.is_logged_in, 1);
+
+  // Update profile
+  db.prepare('UPDATE user_profile SET age = 25, weight_kg = 72 WHERE id = 1').run();
+  profile = db.prepare('SELECT age, weight_kg FROM user_profile WHERE id = 1').get() as any;
+  assert.strictEqual(profile.age, 25);
+  assert.strictEqual(profile.weight_kg, 72);
+
+  // Logout (reset session flag)
+  db.prepare('UPDATE user_profile SET is_logged_in = 0 WHERE id = 1').run();
+  profile = db.prepare('SELECT is_logged_in FROM user_profile WHERE id = 1').get() as any;
+  assert.strictEqual(profile.is_logged_in, 0);
+  console.log('  ✔ Rich User Profile CRUD and offline session persistence verified');
+}
+
+// -----------------------------------------------------------------------------
+// Test 11: Multi-User Data Isolation (Schema v4 Migration)
+// -----------------------------------------------------------------------------
+console.log('Test 11: Multi-User Data Isolation (Schema v4 Partitioning)');
+{
+  // Upgrade schema to v4 multi-user partitioning
+  db.exec(`
+    -- Readings with user_id
+    DROP TABLE IF EXISTS readings_v4;
+    CREATE TABLE readings_v4 (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL DEFAULT 'offline_local',
+      timestamp TEXT NOT NULL,
+      sensor_type TEXT NOT NULL,
+      value REAL NOT NULL,
+      source TEXT NOT NULL,
+      synced INTEGER DEFAULT 0
+    );
+    CREATE INDEX idx_readings_v4_user_sensor_ts ON readings_v4(user_id, sensor_type, timestamp);
+
+    -- Alerts with user_id
+    DROP TABLE IF EXISTS alerts_v4;
+    CREATE TABLE alerts_v4 (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL DEFAULT 'offline_local',
+      timestamp TEXT NOT NULL,
+      category TEXT NOT NULL,
+      severity TEXT CHECK(severity IN ('LOW', 'MODERATE', 'HIGH', 'CRITICAL')) NOT NULL,
+      message TEXT NOT NULL,
+      acknowledged INTEGER DEFAULT 0
+    );
+    CREATE INDEX idx_alerts_v4_user_ts ON alerts_v4(user_id, timestamp);
+
+    -- Multi-user profiles keyed by user_id
+    DROP TABLE IF EXISTS user_profile_v4;
+    CREATE TABLE user_profile_v4 (
+      user_id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT,
+      pin TEXT,
+      age INTEGER,
+      gender TEXT,
+      height_cm REAL,
+      weight_kg REAL,
+      blood_group TEXT,
+      medical_condition TEXT,
+      emergency_name TEXT,
+      emergency_phone TEXT,
+      is_logged_in INTEGER DEFAULT 1
+    );
+
+    -- Multi-user rolling baseline with composite primary key
+    DROP TABLE IF EXISTS rolling_baseline_v4;
+    CREATE TABLE rolling_baseline_v4 (
+      user_id TEXT NOT NULL DEFAULT 'offline_local',
+      metric_type TEXT NOT NULL,
+      moving_average REAL NOT NULL,
+      last_updated TEXT NOT NULL,
+      PRIMARY KEY (user_id, metric_type)
+    );
+  `);
+
+  const now = new Date().toISOString();
+
+  // 1. Insert readings for shubham1, shubham2, and offline_local
+  const insertReading = db.prepare(
+    'INSERT INTO readings_v4 (user_id, timestamp, sensor_type, value, source) VALUES (?, ?, ?, ?, ?)'
+  );
+  insertReading.run('shubham1@gmail.com', now, 'HR', 72.0, 'wearable');
+  insertReading.run('shubham1@gmail.com', now, 'SPO2', 98.0, 'wearable');
+  insertReading.run('shubham2@gmail.com', now, 'HR', 110.0, 'wearable');
+  insertReading.run('shubham2@gmail.com', now, 'SPO2', 92.0, 'wearable');
+  insertReading.run('offline_local', now, 'HR', 65.0, 'phone_offline');
+  insertReading.run('offline_local', now, 'SPO2', 99.0, 'phone_offline');
+
+  // Verify readings partition
+  const u1Readings = db.prepare('SELECT * FROM readings_v4 WHERE user_id = ?').all('shubham1@gmail.com') as any[];
+  assert.strictEqual(u1Readings.length, 2);
+  assert.strictEqual(u1Readings.find((r: any) => r.sensor_type === 'HR').value, 72.0);
+
+  const u2Readings = db.prepare('SELECT * FROM readings_v4 WHERE user_id = ?').all('shubham2@gmail.com') as any[];
+  assert.strictEqual(u2Readings.length, 2);
+  assert.strictEqual(u2Readings.find((r: any) => r.sensor_type === 'HR').value, 110.0);
+
+  const offReadings = db.prepare('SELECT * FROM readings_v4 WHERE user_id = ?').all('offline_local') as any[];
+  assert.strictEqual(offReadings.length, 2);
+  assert.strictEqual(offReadings.find((r: any) => r.sensor_type === 'HR').value, 65.0);
+
+  // 2. Insert alerts for each user
+  const insertAlert = db.prepare(
+    'INSERT INTO alerts_v4 (user_id, timestamp, category, severity, message) VALUES (?, ?, ?, ?, ?)'
+  );
+  insertAlert.run('shubham1@gmail.com', now, 'CARDIAC', 'MODERATE', 'Slight tachycardia for Shubham1');
+  insertAlert.run('shubham2@gmail.com', now, 'HEAT', 'CRITICAL', 'Heat stress danger for Shubham2');
+  insertAlert.run('offline_local', now, 'FALL', 'LOW', 'Minor stumble offline');
+
+  const u1Alerts = db.prepare('SELECT * FROM alerts_v4 WHERE user_id = ?').all('shubham1@gmail.com') as any[];
+  assert.strictEqual(u1Alerts.length, 1);
+  assert.strictEqual(u1Alerts[0].category, 'CARDIAC');
+
+  const u2Alerts = db.prepare('SELECT * FROM alerts_v4 WHERE user_id = ?').all('shubham2@gmail.com') as any[];
+  assert.strictEqual(u2Alerts.length, 1);
+  assert.strictEqual(u2Alerts[0].category, 'HEAT');
+
+  const offAlerts = db.prepare('SELECT * FROM alerts_v4 WHERE user_id = ?').all('offline_local') as any[];
+  assert.strictEqual(offAlerts.length, 1);
+  assert.strictEqual(offAlerts[0].category, 'FALL');
+
+  // 3. User Profiles isolated by user_id
+  const insertProfile = db.prepare(
+    'INSERT INTO user_profile_v4 (user_id, name, email, age) VALUES (?, ?, ?, ?)'
+  );
+  insertProfile.run('shubham1@gmail.com', 'Shubham One', 'shubham1@gmail.com', 24);
+  insertProfile.run('shubham2@gmail.com', 'Shubham Two', 'shubham2@gmail.com', 29);
+  insertProfile.run('offline_local', 'Offline Phone User', 'offline_local', 35);
+
+  const p1 = db.prepare('SELECT * FROM user_profile_v4 WHERE user_id = ?').get('shubham1@gmail.com') as any;
+  assert.strictEqual(p1.name, 'Shubham One');
+  assert.strictEqual(p1.age, 24);
+
+  const p2 = db.prepare('SELECT * FROM user_profile_v4 WHERE user_id = ?').get('shubham2@gmail.com') as any;
+  assert.strictEqual(p2.name, 'Shubham Two');
+  assert.strictEqual(p2.age, 29);
+
+  // 4. Multi-user Rolling Baseline with composite PK (user_id, metric_type)
+  const insertBaseline = db.prepare(
+    'INSERT INTO rolling_baseline_v4 (user_id, metric_type, moving_average, last_updated) VALUES (?, ?, ?, ?)'
+  );
+  insertBaseline.run('shubham1@gmail.com', 'HR', 71.5, now);
+  insertBaseline.run('shubham2@gmail.com', 'HR', 108.2, now);
+  insertBaseline.run('offline_local', 'HR', 64.8, now);
+
+  const b1 = db.prepare('SELECT * FROM rolling_baseline_v4 WHERE user_id = ? AND metric_type = ?').get('shubham1@gmail.com', 'HR') as any;
+  assert.strictEqual(b1.moving_average, 71.5);
+
+  const b2 = db.prepare('SELECT * FROM rolling_baseline_v4 WHERE user_id = ? AND metric_type = ?').get('shubham2@gmail.com', 'HR') as any;
+  assert.strictEqual(b2.moving_average, 108.2);
+
+  // 5. Verify isolated delete: clearing user 1's alerts leaves user 2 and offline intact
+  db.prepare('DELETE FROM alerts_v4 WHERE user_id = ?').run('shubham1@gmail.com');
+  const u1AlertsAfter = db.prepare('SELECT * FROM alerts_v4 WHERE user_id = ?').all('shubham1@gmail.com') as any[];
+  assert.strictEqual(u1AlertsAfter.length, 0);
+
+  const u2AlertsAfter = db.prepare('SELECT * FROM alerts_v4 WHERE user_id = ?').all('shubham2@gmail.com') as any[];
+  assert.strictEqual(u2AlertsAfter.length, 1);
+
+  const offAlertsAfter = db.prepare('SELECT * FROM alerts_v4 WHERE user_id = ?').all('offline_local') as any[];
+  assert.strictEqual(offAlertsAfter.length, 1);
+
+  console.log('  ✔ Complete Multi-User isolation (readings, alerts, profiles, baselines) verified');
+}
+
 console.log('\n================================================================');
-console.log('ALL DATABASE TESTS PASSED (6 / 6)');
+console.log('ALL DATABASE TESTS PASSED (11 / 11)');
 console.log('================================================================\n');
 
