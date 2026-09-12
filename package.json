@@ -12,6 +12,8 @@
     "test:ai": "npx --yes tsx mobile-app/ai-engine/__tests__/aiPipeline.test.ts",
     "test:db": "npx --yes tsx mobile-app/databaseConnections/__tests__/databaseSchema.test.ts",
     "test:e2e": "npx --yes tsx mobile-app/__tests__/endToEndIntegration.test.ts",
+    "portal": "npm --prefix web-portal run dev",
+    "portal:build": "npm --prefix web-portal run build",
     "test": "npm run test:ai && npm run test:db && npm run test:e2e"
   },
   "keywords": [
