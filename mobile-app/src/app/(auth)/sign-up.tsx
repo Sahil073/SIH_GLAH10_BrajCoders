@@ -14,12 +14,14 @@ import { useAuth, useSignUp, useSSO } from "@clerk/expo";
 import { images } from "@/constants/images";
 import { SocialAuthButton, SocialProvider } from "@/components/auth/SocialAuthButton";
 import { VerificationModal } from "@/components/auth/VerificationModal";
+import { useUserProfile } from "@/store/userProfileStore";
 
 export default function SignUpScreen() {
   const router = useRouter();
   const { isLoaded } = useAuth();
   const { signUp } = useSignUp();
   const { startSSOFlow } = useSSO();
+  const { login } = useUserProfile();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -80,6 +82,7 @@ export default function SignUpScreen() {
       if (finalizeError) {
         throw new Error(finalizeError.message || "Failed to finalize sign up session.");
       }
+      await login(email.trim(), email.split("@")[0]);
       setShowVerificationModal(false);
       router.replace("/onboarding-health");
     } else {
@@ -268,7 +271,10 @@ export default function SignUpScreen() {
           {/* Continue Offline (BLE Direct) */}
           <TouchableOpacity
             activeOpacity={0.8}
-            onPress={() => router.replace("/(tabs)")}
+            onPress={async () => {
+              await login(email.trim() || undefined);
+              router.replace("/(tabs)");
+            }}
             className="w-full py-3.5 px-6 -mt-2 mb-5 border border-[#214332]/20 bg-[#F4F7F5] rounded-full flex-row items-center justify-center"
           >
             <Text className="font-poppins-semibold text-[#214332] text-[14px]">

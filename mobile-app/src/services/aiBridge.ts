@@ -10,6 +10,7 @@ import { processSensorTick, resetAIEngine } from "../../ai-engine";
 import type { SensorTickInput, SanjeevniRiskOutput } from "../../ai-engine/types";
 import { setAiOutput, INITIAL_AI_STATE } from "../store/aiStore";
 import { safeInsertReading, safeInsertAlert } from "../database";
+import { getActiveUserId } from "../store/userProfileStore";
 
 /**
  * Configuration for the AI Ingestion Bridge
@@ -21,14 +22,19 @@ const ALERT_COOLDOWN_MS = 30000;      // Debounce repeated alert insertions by 3
 
 class AIBridgeService {
   private ecgBuffer: number[] = [];
-  private lastAccel = { x: 0, y: 0, z: 1.0 }; // Default ~1g stationary
-  private lastDht = { temperature: 28.0, humidity: 50.0 };
-  private lastMq135 = 450;
+  private lastAccel = { x: 0, y: 0, z: 1.0 };
+  private lastDht: { temperature: number | null; humidity: number | null } = {
+    temperature: null,
+    humidity: null,
+  };
+  private lastMq135: number | null = null;
   private lastProcessTime = 0;
   private lastDbLogTime = 0;
   private lastAlertTimes: Record<string, number> = {};
   private isRunning = false;
+  private wasConnected = false;
   private unsubscribeBle: (() => void) | null = null;
+  private unsubscribeStatus: (() => void) | null = null;
 
   /**
    * Starts the AI bridge, listening to the live BLE stream.
@@ -39,6 +45,15 @@ class AIBridgeService {
 
     this.unsubscribeBle = bleService.addPacketListener((packet: Esp32Packet) => {
       this.handlePacket(packet);
+    });
+
+    this.unsubscribeStatus = bleService.addStatusListener((status) => {
+      if (status === "connected") {
+        this.wasConnected = true;
+      } else if (this.wasConnected) {
+        this.wasConnected = false;
+        this.reset();
+      }
     });
 
     console.log("[AIBridge] Bridge started. Listening to BLE telemetry.");
@@ -56,6 +71,11 @@ class AIBridgeService {
       this.unsubscribeBle = null;
     }
 
+    if (this.unsubscribeStatus) {
+      this.unsubscribeStatus();
+      this.unsubscribeStatus = null;
+    }
+
     console.log("[AIBridge] Bridge stopped.");
   }
 
@@ -65,8 +85,8 @@ class AIBridgeService {
   public reset(): void {
     this.ecgBuffer = [];
     this.lastAccel = { x: 0, y: 0, z: 1.0 };
-    this.lastDht = { temperature: 28.0, humidity: 50.0 };
-    this.lastMq135 = 450;
+    this.lastDht = { temperature: null, humidity: null };
+    this.lastMq135 = null;
     this.lastProcessTime = 0;
     this.lastDbLogTime = 0;
     this.lastAlertTimes = {};
@@ -136,7 +156,7 @@ class AIBridgeService {
     try {
       const durationMs = (this.ecgBuffer.length / 500) * 1000;
       const input: SensorTickInput = {
-        userId: "default_user",
+        userId: getActiveUserId(),
         timestamp: now,
         ecg:
           this.ecgBuffer.length >= 250
@@ -185,28 +205,30 @@ class AIBridgeService {
    * Persists health readings to the local SQLite database.
    */
   private logTelemetryToDb(output: SanjeevniRiskOutput): void {
+    const uid = getActiveUserId();
+
     if (output.heartRate && output.heartRate > 30 && output.heartRate < 240) {
-      safeInsertReading("HR", Math.round(output.heartRate));
+      safeInsertReading("HR", Math.round(output.heartRate), "garment", uid);
     }
 
-    if (output.environment.temperature && output.environment.temperature > 0) {
-      safeInsertReading("TEMP", Number(output.environment.temperature.toFixed(1)));
+    if (output.environment.temperature != null && output.environment.temperature > 0) {
+      safeInsertReading("TEMP", Number(output.environment.temperature.toFixed(1)), "garment", uid);
     }
 
-    if (output.environment.humidity && output.environment.humidity > 0) {
-      safeInsertReading("HUMIDITY", Number(output.environment.humidity.toFixed(1)));
+    if (output.environment.humidity != null && output.environment.humidity > 0) {
+      safeInsertReading("HUMIDITY", Number(output.environment.humidity.toFixed(1)), "garment", uid);
     }
 
-    if (output.environment.aqi && output.environment.aqi > 0) {
-      safeInsertReading("AQI", Math.round(output.environment.aqi));
+    if (output.environment.aqi != null && output.environment.aqi > 0) {
+      safeInsertReading("AQI", Math.round(output.environment.aqi), "garment", uid);
     }
 
     if (output.hrv) {
       if (output.hrv.rmssd != null && output.hrv.rmssd > 0) {
-        safeInsertReading("HRV_RMSSD", Number(output.hrv.rmssd.toFixed(2)));
+        safeInsertReading("HRV_RMSSD", Number(output.hrv.rmssd.toFixed(2)), "garment", uid);
       }
       if (output.hrv.sdnn != null && output.hrv.sdnn > 0) {
-        safeInsertReading("HRV_SDNN", Number(output.hrv.sdnn.toFixed(2)));
+        safeInsertReading("HRV_SDNN", Number(output.hrv.sdnn.toFixed(2)), "garment", uid);
       }
     }
   }
@@ -215,6 +237,7 @@ class AIBridgeService {
    * Checks for critical risk conditions and logs alerts to SQLite.
    */
   private evaluateAlertTriggers(output: SanjeevniRiskOutput, now: number): void {
+    const uid = getActiveUserId();
     const shouldFireAlert = (category: string) => {
       const last = this.lastAlertTimes[category] || 0;
       if (now - last >= ALERT_COOLDOWN_MS) {
@@ -229,7 +252,8 @@ class AIBridgeService {
       safeInsertAlert(
         "CARDIAC",
         "CRITICAL",
-        "Emergency SOS recommended: Sustained critical risk detected. Immediate attention requested."
+        "Emergency SOS recommended: Sustained critical risk detected. Immediate attention requested.",
+        uid
       );
     }
 
@@ -238,7 +262,8 @@ class AIBridgeService {
       safeInsertAlert(
         "FALL",
         "CRITICAL",
-        `Fall event detected (Confidence: ${(output.risks.fall.confidence * 100).toFixed(0)}%). Check worker status.`
+        `Fall event detected (Confidence: ${(output.risks.fall.confidence * 100).toFixed(0)}%). Check worker status.`,
+        uid
       );
     }
 
@@ -247,7 +272,8 @@ class AIBridgeService {
       safeInsertAlert(
         "HEAT",
         "HIGH",
-        `Extreme Heat Index detected (${output.environment.heatIndex?.toFixed(1) ?? "39"}°C). High risk of heat illness. Seek shade and hydrate.`
+        `Extreme Heat Index detected (${output.environment.heatIndex?.toFixed(1) ?? "39"}°C). High risk of heat illness. Seek shade and hydrate.`,
+        uid
       );
     }
 
@@ -256,7 +282,8 @@ class AIBridgeService {
       safeInsertAlert(
         "CARDIAC",
         "HIGH",
-        `Cardiac anomaly detected (HR: ${output.heartRate?.toFixed(0) ?? "abnormal"} BPM). Worker advised to rest.`
+        `Cardiac anomaly detected (HR: ${output.heartRate?.toFixed(0) ?? "abnormal"} BPM). Worker advised to rest.`,
+        uid
       );
     }
   }

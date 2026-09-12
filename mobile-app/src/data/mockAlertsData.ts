@@ -206,13 +206,7 @@ export const INFO_ALERTS: AlertRecord[] = [
 ];
 
 /**
- * Initial list of alerts for the Alerts tab.
+ * Initial list of alerts for the Alerts tab (empty by default so only real SQLite alerts show).
  */
-export const INITIAL_ALERTS: AlertRecord[] = [
-  CRITICAL_ALERTS[0], // High Heart Rate (142 BPM)
-  WARNING_ALERTS[0],  // High Heat Index (38.2°C)
-  WARNING_ALERTS[1],  // Poor Air Quality (AQI 168)
-  WARNING_ALERTS[5],  // Low Battery (15%)
-  INFO_ALERTS[0],     // Wearable Connected
-  INFO_ALERTS[1],     // Heart Rate Normal
-];
+export const INITIAL_ALERTS: AlertRecord[] = [];
+

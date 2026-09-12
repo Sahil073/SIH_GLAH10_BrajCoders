@@ -1,13 +1,80 @@
 import React from "react";
-import { View } from "react-native";
-import Svg, { Path, Circle, Rect } from "react-native-svg";
+import { View, Text, StyleSheet } from "react-native";
+import Svg, { Path, Circle, Rect, Line } from "react-native-svg";
 import { WeeklyBarPoint } from "@/types/dashboard";
 
 /**
+ * Modern placeholder shown inside health cards when no telemetry or historical data exists.
+ * Displays a subtle reference baseline and an elegant 'Not enough data' status pill.
+ */
+export function EmptyChartPlaceholder({
+  height = 42,
+  textColor,
+  message = "Not enough data",
+}: {
+  height?: number;
+  textColor?: string;
+  message?: string;
+}) {
+  return (
+    <View
+      style={{ height, width: "100%", justifyContent: "center", alignItems: "center" }}
+    >
+      <Svg
+        width="100%"
+        height={height}
+        viewBox="0 0 140 42"
+        preserveAspectRatio="none"
+        style={StyleSheet.absoluteFill}
+      >
+        <Line
+          x1={4}
+          y1={21}
+          x2={136}
+          y2={21}
+          stroke={textColor || "#9E9B94"}
+          strokeOpacity={0.2}
+          strokeWidth={1.2}
+          strokeDasharray="4 4"
+        />
+      </Svg>
+      <View
+        style={{
+          backgroundColor: textColor ? `${textColor}15` : "rgba(0,0,0,0.05)",
+          paddingHorizontal: 7,
+          paddingVertical: 2,
+          borderRadius: 6,
+        }}
+      >
+        <Text
+          style={{
+            color: textColor || "#8A867D",
+            fontSize: 9.5,
+            fontWeight: "600",
+            letterSpacing: 0.2,
+          }}
+        >
+          {message}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+/**
  * Calculates a smooth cubic bezier SVG path from coordinate points.
+ * Fully guarded against NaN or non-finite values to prevent Android native Skia crashes.
  */
 function createSplinePath(points: { x: number; y: number }[]): string {
-  if (points.length === 0) return "";
+  if (!points || points.length === 0) return "";
+  const allFinite = points.every(
+    (p) => Number.isFinite(p.x) && Number.isFinite(p.y)
+  );
+  if (!allFinite) return "";
+
+  if (points.length === 1) {
+    return `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
+  }
   let path = `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
 
   for (let i = 0; i < points.length - 1; i++) {
@@ -21,6 +88,15 @@ function createSplinePath(points: { x: number; y: number }[]): string {
     const cp2x = p2.x - (p3.x - p0.x) / 6;
     const cp2y = p2.y - (p3.y - p1.y) / 6;
 
+    if (
+      !Number.isFinite(cp1x) ||
+      !Number.isFinite(cp1y) ||
+      !Number.isFinite(cp2x) ||
+      !Number.isFinite(cp2y)
+    ) {
+      return "";
+    }
+
     path += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(
       1
     )} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
@@ -30,43 +106,77 @@ function createSplinePath(points: { x: number; y: number }[]): string {
 
 /**
  * Dual Wave Chart for Blood Pressure / SpO2 Card
- * Shows two undulating smooth sine curves (primary dark, secondary muted)
+ * Shows two undulating smooth curves or an empty indicator when data is absent.
  */
 export function DualWaveChart({
-  upperValues = [35, 48, 40, 56, 44, 52, 38, 46],
-  lowerValues = [18, 30, 24, 34, 26, 32, 22, 28],
+  upperValues = [],
+  lowerValues = [],
   height = 42,
+  upperStroke = "#161616",
+  lowerStroke = "#9E9B94",
+  hasData,
 }: {
   upperValues?: number[];
   lowerValues?: number[];
   height?: number;
+  upperStroke?: string;
+  lowerStroke?: string;
+  hasData?: boolean;
 }) {
   const chartWidth = 140;
   const paddingX = 4;
   const usableWidth = chartWidth - paddingX * 2;
 
-  // Normalize upper curve
-  const upperMin = 20;
-  const upperMax = 70;
-  const upperPoints = upperValues.map((val, idx) => {
-    const x = paddingX + (idx / (upperValues.length - 1)) * usableWidth;
-    const norm = (val - upperMin) / (upperMax - upperMin);
-    const y = height - 6 - norm * (height - 12);
-    return { x, y };
-  });
+  const validUpper = upperValues.filter(
+    (v): v is number => typeof v === "number" && Number.isFinite(v)
+  );
+  const validLower = lowerValues.filter(
+    (v): v is number => typeof v === "number" && Number.isFinite(v)
+  );
 
-  // Normalize lower curve
-  const lowerMin = 10;
-  const lowerMax = 50;
-  const lowerPoints = lowerValues.map((val, idx) => {
-    const x = paddingX + (idx / (lowerValues.length - 1)) * usableWidth;
-    const norm = (val - lowerMin) / (lowerMax - lowerMin);
-    const y = height - 2 - norm * (height - 14);
-    return { x, y };
-  });
+  const dataPresent =
+    hasData !== undefined ? hasData : validUpper.length >= 2;
 
-  const upperPath = createSplinePath(upperPoints);
-  const lowerPath = createSplinePath(lowerPoints);
+  if (!dataPresent) {
+    return (
+      <EmptyChartPlaceholder
+        height={height}
+        textColor={upperStroke}
+        message="Not enough data"
+      />
+    );
+  }
+
+  const hasUpper = validUpper.length >= 2;
+  const hasLower = validLower.length >= 2;
+
+  let upperPath = "";
+  if (hasUpper) {
+    const upperMin = Math.min(...validUpper);
+    const upperMax = Math.max(...validUpper);
+    const range = upperMax - upperMin || 1;
+    const upperPoints = validUpper.map((val, idx) => {
+      const x = paddingX + (idx / (validUpper.length - 1)) * usableWidth;
+      const norm = (val - upperMin) / range;
+      const y = height - 8 - norm * (height - 16);
+      return { x, y };
+    });
+    upperPath = createSplinePath(upperPoints);
+  }
+
+  let lowerPath = "";
+  if (hasLower) {
+    const lowerMin = Math.min(...validLower);
+    const lowerMax = Math.max(...validLower);
+    const range = lowerMax - lowerMin || 1;
+    const lowerPoints = validLower.map((val, idx) => {
+      const x = paddingX + (idx / (validLower.length - 1)) * usableWidth;
+      const norm = (val - lowerMin) / range;
+      const y = height - 2 - norm * (height - 18);
+      return { x, y };
+    });
+    lowerPath = createSplinePath(lowerPoints);
+  }
 
   return (
     <View style={{ height, width: "100%" }}>
@@ -77,23 +187,28 @@ export function DualWaveChart({
         preserveAspectRatio="none"
       >
         {/* Secondary lower wave */}
-        <Path
-          d={lowerPath}
-          fill="none"
-          stroke="#9E9B94"
-          strokeWidth={1.8}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
+        {hasLower && (
+          <Path
+            d={lowerPath}
+            fill="none"
+            stroke={lowerStroke}
+            strokeWidth={1.8}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        )}
+
         {/* Primary upper wave */}
-        <Path
-          d={upperPath}
-          fill="none"
-          stroke="#161616"
-          strokeWidth={2.2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
+        {hasUpper && (
+          <Path
+            d={upperPath}
+            fill="none"
+            stroke={upperStroke}
+            strokeWidth={2.2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        )}
       </Svg>
     </View>
   );
@@ -101,25 +216,48 @@ export function DualWaveChart({
 
 /**
  * Pulse Wave Chart for Heart Rate Card
- * Crisp black pulse wave across the vibrant lime card
+ * Crisp pulse wave across the card, or empty indicator if waiting for signal.
  */
 export function PulseWaveChart({
-  values = [40, 36, 52, 44, 40, 68, 38, 56, 35, 48],
+  values = [],
   height = 42,
+  strokeColor = "#161616",
+  baselineColor = "#5C6624",
+  hasData,
 }: {
   values?: number[];
   height?: number;
+  strokeColor?: string;
+  baselineColor?: string;
+  hasData?: boolean;
 }) {
   const chartWidth = 140;
   const paddingX = 4;
   const usableWidth = chartWidth - paddingX * 2;
 
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+  const validValues = values.filter(
+    (v): v is number => typeof v === "number" && Number.isFinite(v)
+  );
+
+  const dataPresent =
+    hasData !== undefined ? hasData : validValues.length >= 2;
+
+  if (!dataPresent) {
+    return (
+      <EmptyChartPlaceholder
+        height={height}
+        textColor={strokeColor}
+        message="Not enough data"
+      />
+    );
+  }
+
+  const min = Math.min(...validValues);
+  const max = Math.max(...validValues);
   const range = max - min || 1;
 
-  const points = values.map((val, idx) => {
-    const x = paddingX + (idx / (values.length - 1)) * usableWidth;
+  const points = validValues.map((val, idx) => {
+    const x = paddingX + (idx / (validValues.length - 1)) * usableWidth;
     const norm = (val - min) / range;
     const y = height - 5 - norm * (height - 10);
     return { x, y };
@@ -138,7 +276,7 @@ export function PulseWaveChart({
         <Path
           d={path}
           fill="none"
-          stroke="#161616"
+          stroke={strokeColor}
           strokeWidth={2.2}
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -150,21 +288,51 @@ export function PulseWaveChart({
 
 /**
  * 7-Day Pill Bar Chart for Sleep / Activity Card
- * 7 vertical capsules with two-tone fill matching app_ui.jpg
+ * 7 vertical capsules with two-tone fill matching app_ui.jpg,
+ * or empty state placeholder if no steps/activity recorded yet.
  */
 export function PillBarChart({
-  bars,
+  bars = [],
   height = 44,
   trackColor = "#BBD839",
   fillColor = "#161616",
+  hasData,
 }: {
-  bars: WeeklyBarPoint[];
+  bars?: WeeklyBarPoint[];
   height?: number;
   trackColor?: string;
   fillColor?: string;
+  hasData?: boolean;
 }) {
+  const hasActiveValues = bars && bars.some((b) => b.value > 0);
+  const dataPresent =
+    hasData !== undefined ? hasData : Boolean(hasActiveValues);
+
+  if (!dataPresent) {
+    return (
+      <EmptyChartPlaceholder
+        height={height}
+        textColor={fillColor}
+        message="Not enough data"
+      />
+    );
+  }
+
+  const displayBars =
+    bars.length > 0
+      ? bars
+      : [
+          { day: "M", value: 0, maxValue: 10000 },
+          { day: "T", value: 0, maxValue: 10000 },
+          { day: "W", value: 0, maxValue: 10000 },
+          { day: "T", value: 0, maxValue: 10000 },
+          { day: "F", value: 0, maxValue: 10000 },
+          { day: "S", value: 0, maxValue: 10000 },
+          { day: "S", value: 0, maxValue: 10000 },
+        ];
+
   const barWidth = 6.5;
-  const barCount = bars.length;
+  const barCount = displayBars.length;
   const totalSvgWidth = 130;
   const spacing = (totalSvgWidth - barWidth * barCount) / (barCount - 1);
 
@@ -176,10 +344,10 @@ export function PillBarChart({
         viewBox={`0 0 ${totalSvgWidth} ${height}`}
         preserveAspectRatio="xMidYMid meet"
       >
-        {bars.map((item, idx) => {
+        {displayBars.map((item, idx) => {
           const x = idx * (barWidth + spacing);
-          const ratio = Math.min(Math.max(item.value / item.maxValue, 0.2), 0.95);
-          const activeHeight = height * ratio;
+          const ratio = item.maxValue > 0 ? Math.min(Math.max(item.value / item.maxValue, 0), 1) : 0;
+          const activeHeight = ratio > 0 ? Math.max(height * ratio, 6) : 0;
           const activeY = height - activeHeight;
 
           return (
@@ -194,14 +362,16 @@ export function PillBarChart({
                 fill={trackColor}
               />
               {/* Dark active bottom fill capsule */}
-              <Rect
-                x={x}
-                y={activeY}
-                width={barWidth}
-                height={activeHeight}
-                rx={barWidth / 2}
-                fill={fillColor}
-              />
+              {activeHeight > 0 && (
+                <Rect
+                  x={x}
+                  y={activeY}
+                  width={barWidth}
+                  height={activeHeight}
+                  rx={barWidth / 2}
+                  fill={fillColor}
+                />
+              )}
             </React.Fragment>
           );
         })}
@@ -215,7 +385,7 @@ export function PillBarChart({
  * Modern circular arc gauge matching app_ui.jpg
  */
 export function DonutArcChart({
-  progress = 0.58, // 0 to 1
+  progress = 0, // 0 to 1
   size = 54,
   trackColor = "#DDD9D1",
   activeColor = "#161616",
@@ -230,7 +400,8 @@ export function DonutArcChart({
   const center = size / 2;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset = circumference * (1 - Math.min(Math.max(progress, 0.05), 1));
+  const clamped = Math.min(Math.max(progress, 0), 1);
+  const strokeDashoffset = circumference * (1 - clamped);
 
   return (
     <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
@@ -245,18 +416,20 @@ export function DonutArcChart({
           fill="none"
         />
         {/* Active Dark Arc Segment */}
-        <Circle
-          cx={center}
-          cy={center}
-          r={radius}
-          stroke={activeColor}
-          strokeWidth={strokeWidth}
-          fill="none"
-          strokeDasharray={`${circumference} ${circumference}`}
-          strokeDashoffset={strokeDashoffset}
-          strokeLinecap="round"
-          transform={`rotate(-90 ${center} ${center})`}
-        />
+        {clamped > 0 && (
+          <Circle
+            cx={center}
+            cy={center}
+            r={radius}
+            stroke={activeColor}
+            strokeWidth={strokeWidth}
+            fill="none"
+            strokeDasharray={`${circumference} ${circumference}`}
+            strokeDashoffset={strokeDashoffset}
+            strokeLinecap="round"
+            transform={`rotate(-90 ${center} ${center})`}
+          />
+        )}
       </Svg>
     </View>
   );
@@ -264,15 +437,16 @@ export function DonutArcChart({
 
 /**
  * Smooth Trend Wave Chart for Temperature, AQI, Moisture, etc.
- * Supports configurable stroke color, stroke width, and optional inflection markers
+ * Renders smooth spline curve or empty indicator when data is absent.
  */
 export function SmoothTrendWaveChart({
-  values = [30, 42, 38, 50, 45, 55, 48, 52],
+  values = [],
   height = 42,
   strokeColor = "#161616",
   strokeWidth = 2.2,
   showDots = false,
   dotRadius = 2.5,
+  hasData,
 }: {
   values?: number[];
   height?: number;
@@ -280,17 +454,35 @@ export function SmoothTrendWaveChart({
   strokeWidth?: number;
   showDots?: boolean;
   dotRadius?: number;
+  hasData?: boolean;
 }) {
   const chartWidth = 140;
   const paddingX = 4;
   const usableWidth = chartWidth - paddingX * 2;
 
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+  const validValues = values.filter(
+    (v): v is number => typeof v === "number" && Number.isFinite(v)
+  );
+
+  const dataPresent =
+    hasData !== undefined ? hasData : validValues.length >= 2;
+
+  if (!dataPresent) {
+    return (
+      <EmptyChartPlaceholder
+        height={height}
+        textColor={strokeColor}
+        message="Not enough data"
+      />
+    );
+  }
+
+  const min = Math.min(...validValues);
+  const max = Math.max(...validValues);
   const range = max - min || 1;
 
-  const points = values.map((val, idx) => {
-    const x = paddingX + (idx / (values.length - 1)) * usableWidth;
+  const points = validValues.map((val, idx) => {
+    const x = paddingX + (idx / (validValues.length - 1)) * usableWidth;
     const norm = (val - min) / range;
     const y = height - 6 - norm * (height - 12);
     return { x, y };
@@ -332,4 +524,3 @@ export function SmoothTrendWaveChart({
     </View>
   );
 }
-

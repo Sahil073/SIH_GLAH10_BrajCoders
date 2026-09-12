@@ -11,12 +11,14 @@
     "expo-auth-session": "~57.0.11",
     "expo-constants": "~57.0.17",
     "expo-device": "~57.0.1",
+    "expo-file-system": "~57.0.7",
     "expo-font": "~57.0.3",
     "expo-glass-effect": "~57.0.2",
     "expo-image": "~57.0.4",
     "expo-linking": "~57.0.9",
     "expo-router": "~57.0.20",
     "expo-secure-store": "~57.0.3",
+    "expo-sharing": "~57.0.19",
     "expo-splash-screen": "~57.0.8",
     "expo-sqlite": "~57.0.3",
     "expo-status-bar": "~57.0.1",
@@ -39,7 +41,7 @@
   },
   "devDependencies": {
     "@types/base-64": "^1.0.2",
-    "@types/react": "~19.2.2",
+    "@types/react": "^19.3.0",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~57.0.2",
     "typescript": "^5.9.3"
@@ -50,7 +52,8 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "npx tsx databaseConnections/__tests__/databaseSchema.test.ts && npx tsx ai-engine/__tests__/aiPipeline.test.ts && npx tsx __tests__/endToEndIntegration.test.ts"
   },
   "private": true
 }

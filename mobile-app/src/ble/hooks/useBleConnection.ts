@@ -8,7 +8,7 @@ import { useCallback, useMemo } from "react";
 import { useBle } from "../bleStore";
 import { BleConnectionStatus, DiscoveredDevice } from "../types";
 
-export type UIConnectionStatus = "scanning" | "connecting" | "connected";
+export type UIConnectionStatus = "scanning" | "connecting" | "connected" | "disconnected";
 
 export interface UseBleConnectionResult {
   /** High-level UI connection status */
@@ -58,7 +58,8 @@ export function useBleConnection(): UseBleConnectionResult {
   const status: UIConnectionStatus = useMemo(() => {
     if (connectionStatus === "connected") return "connected";
     if (connectionStatus === "connecting") return "connecting";
-    return "scanning";
+    if (connectionStatus === "scanning") return "scanning";
+    return "disconnected";
   }, [connectionStatus]);
 
   const isScanning = connectionStatus === "scanning";

@@ -9,21 +9,23 @@ import { useUserProfile } from "@/store/userProfileStore";
 export default function OnboardingScreen() {
   const router = useRouter();
   const { isLoaded, isSignedIn } = useAuth();
-  const { profile } = useUserProfile();
+  const { profile, login } = useUserProfile();
 
   const handleGetStarted = () => {
     router.push("/(auth)/sign-up");
   };
 
-  if (!isLoaded) {
-    return null;
+  const handleContinueOffline = async () => {
+    await login();
+    router.replace("/(tabs)");
+  };
+
+  if (profile.isLoggedIn || isSignedIn) {
+    return <Redirect href="/(tabs)" />;
   }
 
-  if (isSignedIn) {
-    if (!profile.isCompleted) {
-      return <Redirect href="/onboarding-health" />;
-    }
-    return <Redirect href="/(tabs)" />;
+  if (!isLoaded) {
+    return null;
   }
 
   return (
@@ -167,34 +169,47 @@ export default function OnboardingScreen() {
           </View>
         </View>
 
-        {/* Bottom Action Section (Without Pagination Dots) */}
+        {/* Bottom Action Section */}
         <View className="w-full mt-auto pt-2 pb-2">
+          {/* Create Account / Get Started */}
           <TouchableOpacity
             activeOpacity={0.88}
             onPress={handleGetStarted}
-            className="w-full py-5 px-8 min-h-[68px] bg-[#214332] rounded-full flex-row items-center justify-center relative shadow-md shadow-[#214332]/30"
+            className="w-full py-4 px-8 min-h-[58px] bg-[#214332] rounded-full flex-row items-center justify-center relative shadow-md shadow-[#214332]/30"
           >
-            <Text className="font-poppins-semibold text-white text-[18px] tracking-wide">
-              Get Started
+            <Text className="font-poppins-semibold text-white text-[16px] tracking-wide">
+              Create Account
             </Text>
-            <View className="absolute right-7 items-center justify-center">
-              <Text className="text-white text-2xl font-light leading-none">
+            <View className="absolute right-6 items-center justify-center">
+              <Text className="text-white text-xl font-light leading-none">
                 ›
               </Text>
             </View>
           </TouchableOpacity>
 
+          {/* Sign In to Existing Account */}
           <TouchableOpacity
             activeOpacity={0.8}
-            onPress={() => router.replace("/(tabs)")}
-            className="w-full py-4 px-6 mt-3 border border-[#214332]/25 bg-[#F0F5F2] rounded-full flex-row items-center justify-center shadow-sm"
+            onPress={() => router.push("/(auth)/sign-in")}
+            className="w-full py-3.5 px-6 mt-2.5 border border-[#214332]/25 bg-[#F0F5F2] rounded-full flex-row items-center justify-center shadow-xs"
           >
             <Text className="font-poppins-semibold text-[#214332] text-[15px] tracking-wide">
-              Continue Offline (BLE Direct) ›
+              Sign In to Existing Account ›
             </Text>
           </TouchableOpacity>
 
-          <Text className="font-poppins-medium text-[13px] text-[#4A6455] text-center mt-3 tracking-tight">
+          {/* Continue Offline (BLE Direct) */}
+          <TouchableOpacity
+            activeOpacity={0.75}
+            onPress={handleContinueOffline}
+            className="w-full py-3 px-6 mt-2 rounded-full flex-row items-center justify-center"
+          >
+            <Text className="font-poppins-medium text-[#55695E] text-[13.5px] underline">
+              Continue Offline (BLE Direct)
+            </Text>
+          </TouchableOpacity>
+
+          <Text className="font-poppins-regular text-[12px] text-[#4A6455] text-center mt-2 tracking-tight">
             A Safer, Healthier Tomorrow • 100% Offline Ready
           </Text>
         </View>

@@ -76,23 +76,20 @@ function isFiniteNumber(
 function normalizeMQ135Proxy(
   rawValue: number,
 ): number | null {
-  if (!Number.isFinite(rawValue)) {
+  if (!Number.isFinite(rawValue) || rawValue <= 0) {
     return null;
   }
 
   /**
-   * Current hardware contract uses a 0–1023-style raw value.
-   *
-   * If the ESP32 implementation later changes to a 12-bit
-   * 0–4095 ADC value, this conversion must be updated
-   * together with the hardware protocol.
+   * ESP32 utilizes a 12-bit ADC (0–4095) with 11dB attenuation (PIN_MQ135 on GPIO35).
+   * In clean ambient air with a 10k RL divider, raw ADC is typically ~500–800,
+   * corresponding to AQI 25–35 (Good / Safe).
    */
-  if (rawValue < 0 || rawValue > 1023) {
+  if (rawValue > 4095) {
     return null;
   }
 
-  const proxyAQI =
-    (rawValue / 1023) * MAX_AQI;
+  const proxyAQI = Math.max(15, Math.min(MAX_AQI, Math.round((rawValue / 3800) * 160)));
 
   return clamp(
     proxyAQI,

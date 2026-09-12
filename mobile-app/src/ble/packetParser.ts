@@ -58,6 +58,11 @@ export class StreamPacketParser {
   public feed(chunk: string): { packets: Esp32Packet[]; rawLines: string[] } {
     this.buffer += chunk;
 
+    // Safety guard against unbounded buffer growth on corrupted non-delimited streams
+    if (this.buffer.length > 16384) {
+      this.buffer = this.buffer.slice(-4096);
+    }
+
     const packets: Esp32Packet[] = [];
     const rawLines: string[] = [];
 
@@ -142,48 +147,55 @@ export class StreamPacketParser {
         }
         break;
 
-      case SensorId.DHT11:
-        if (obj.data && typeof obj.data.temperature === "number") {
+      case SensorId.DHT11: {
+        const rawTemp = obj.data?.temperature ?? obj.data?.temp;
+        const rawHum = obj.data?.humidity ?? obj.data?.hum;
+        if (typeof rawTemp === "number" && typeof rawHum === "number") {
           return {
             v: 1,
             sensor: SensorId.DHT11,
             seq,
             ts,
             data: {
-              temperature: Number(obj.data.temperature),
-              humidity: Number(obj.data.humidity),
+              temperature: Number(rawTemp),
+              humidity: Number(rawHum),
             },
           } as DhtPacket;
         }
         break;
+      }
 
-      case SensorId.MQ135:
-        if (obj.data && typeof obj.data.raw === "number") {
+      case SensorId.MQ135: {
+        const rawVal = obj.data?.raw ?? obj.data?.value ?? obj.data?.val;
+        if (typeof rawVal === "number") {
           return {
             v: 1,
             sensor: SensorId.MQ135,
             seq,
             ts,
             data: {
-              raw: Number(obj.data.raw),
+              raw: Number(rawVal),
             },
           } as Mq135Packet;
         }
         break;
+      }
 
-      case SensorId.SOIL_MOISTURE:
-        if (obj.data && typeof obj.data.raw === "number") {
+      case SensorId.SOIL_MOISTURE: {
+        const rawVal = obj.data?.raw ?? obj.data?.value ?? obj.data?.val;
+        if (typeof rawVal === "number") {
           return {
             v: 1,
             sensor: SensorId.SOIL_MOISTURE,
             seq,
             ts,
             data: {
-              raw: Number(obj.data.raw),
+              raw: Number(rawVal),
             },
           } as SoilPacket;
         }
         break;
+      }
     }
 
     return null;

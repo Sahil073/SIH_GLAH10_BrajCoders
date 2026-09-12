@@ -76,7 +76,16 @@ let storeState: BleStoreState = {
 
 const stateListeners: Set<(state: BleStoreState) => void> = new Set();
 
-function notifySubscribers() {
+let notifyTimer: ReturnType<typeof setTimeout> | null = null;
+let lastNotifyTimestamp = 0;
+const THROTTLE_INTERVAL_MS = 100; // ~10 FPS UI updates: buttery smooth vitals, zero JS thread starvation
+
+function notifySubscribersImmediate() {
+  if (notifyTimer) {
+    clearTimeout(notifyTimer);
+    notifyTimer = null;
+  }
+  lastNotifyTimestamp = Date.now();
   stateListeners.forEach((listener) => {
     try {
       listener(storeState);
@@ -84,6 +93,19 @@ function notifySubscribers() {
       console.error("Error notifying BLE store subscriber:", e);
     }
   });
+}
+
+function scheduleThrottledNotify() {
+  const now = Date.now();
+  const elapsed = now - lastNotifyTimestamp;
+
+  if (elapsed >= THROTTLE_INTERVAL_MS) {
+    notifySubscribersImmediate();
+  } else if (!notifyTimer) {
+    notifyTimer = setTimeout(() => {
+      notifySubscribersImmediate();
+    }, THROTTLE_INTERVAL_MS - elapsed);
+  }
 }
 
 function handleIncomingPacket(packet: Esp32Packet) {
@@ -160,7 +182,7 @@ function handleIncomingPacket(packet: Esp32Packet) {
     sensorData: nextSensor,
     totalPackets: storeState.totalPackets + 1,
   };
-  notifySubscribers();
+  scheduleThrottledNotify();
 }
 
 function handleStatusChange(status: BleConnectionStatus) {
@@ -170,8 +192,14 @@ function handleStatusChange(status: BleConnectionStatus) {
     isSimulating: status === "connected" ? storeState.isSimulating : false,
     connectedDeviceId:
       status === "disconnected" ? null : storeState.connectedDeviceId,
+    sensorData:
+      status === "disconnected" ? { ...INITIAL_SENSOR_STATE } : storeState.sensorData,
+    totalPackets:
+      status === "disconnected" ? 0 : storeState.totalPackets,
+    discoveredDevices:
+      status === "disconnected" ? [] : storeState.discoveredDevices,
   };
-  notifySubscribers();
+  notifySubscribersImmediate();
 }
 
 function handleDiscoveredDevices(devices: DiscoveredDevice[]) {
@@ -179,15 +207,16 @@ function handleDiscoveredDevices(devices: DiscoveredDevice[]) {
     ...storeState,
     discoveredDevices: devices,
   };
-  notifySubscribers();
+  scheduleThrottledNotify();
 }
 
 function handleNewLog(log: RawConsoleLog) {
+  // Cap logs array to 50 items to keep memory lightweight
   storeState = {
     ...storeState,
-    logs: [log, ...storeState.logs.slice(0, 99)],
+    logs: [log, ...storeState.logs.slice(0, 49)],
   };
-  notifySubscribers();
+  scheduleThrottledNotify();
 }
 
 // Register global listeners once with bleService
@@ -209,7 +238,7 @@ export const bleActions = {
       connectedDeviceId: deviceId,
       isSimulating: deviceId === "SIM-ESP32-HUB",
     };
-    notifySubscribers();
+    notifySubscribersImmediate();
     await bleService.connectToDevice(deviceId);
   },
   disconnect: async () => {
@@ -218,7 +247,7 @@ export const bleActions = {
       isSimulating: false,
       connectedDeviceId: null,
     };
-    notifySubscribers();
+    notifySubscribersImmediate();
     await bleService.disconnect();
   },
   startAutoConnect: async () => {
@@ -233,11 +262,11 @@ export const bleActions = {
       storeState = { ...storeState, isSimulating: true };
       bleService.startSimulation();
     }
-    notifySubscribers();
+    notifySubscribersImmediate();
   },
   clearLogs: () => {
     storeState = { ...storeState, logs: [] };
-    notifySubscribers();
+    notifySubscribersImmediate();
   },
 };
 

@@ -3,12 +3,13 @@ import { initialDashboardData } from "@/data/mockDashboardData";
 import { DashboardData } from "@/types/dashboard";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAiRisk } from "@/store/aiStore";
+import { fetchAllSensorAverages, fetchSensorHistory } from "@/database";
 
 function computeHeatIndex(
   tempC: number,
   humidity: number,
 ): { value: number; label: string } {
-  if (tempC <= 0) return { value: 28, label: "Normal" };
+  if (tempC <= 0) return { value: 0, label: "--" };
   // Simplified Steadman / NOAA Heat Index formula for Celsius
   const hi =
     tempC +
@@ -23,7 +24,7 @@ function computeHeatIndex(
 }
 
 function computeAqi(rawAdc: number): { value: number; label: string } {
-  if (rawAdc <= 0) return { value: 42, label: "Good" };
+  if (rawAdc <= 0) return { value: 0, label: "--" };
   // Map 12-bit ADC (0 - 4095) to AQI (0 - 500 scale)
   const aqi = Math.max(15, Math.min(500, Math.round((rawAdc / 3800) * 160)));
   let label = "Good";
@@ -34,7 +35,7 @@ function computeAqi(rawAdc: number): { value: number; label: string } {
 }
 
 function computeMoisture(rawAdc: number): { value: number; label: string } {
-  if (rawAdc <= 0) return { value: 48, label: "Normal" };
+  if (rawAdc <= 0) return { value: 0, label: "--" };
   const val = Math.max(0, Math.min(100, Math.round((rawAdc / 4095) * 100)));
   let label = "Normal";
   if (val > 75) label = "High";
@@ -42,29 +43,132 @@ function computeMoisture(rawAdc: number): { value: number; label: string } {
   return { value: val, label };
 }
 
+import { useUserProfile } from "@/store/userProfileStore";
+
 /**
  * useDashboardData hook
  *
  * Provides reactive dashboard health data directly hydrated from
  * ESP32 BLE multi-sensor telemetry (BioAmp EXG, ADXL345, DHT11, MQ135, Soil Moisture).
- * Preserves initial baseline states when disconnected.
+ * When disconnected, it stops live updates and hydrates historical averages from SQLite scoped to the active user.
  */
 export function useDashboardData() {
   const [data, setData] = useState<DashboardData>(initialDashboardData);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [hasHistoricalData, setHasHistoricalData] = useState<boolean>(false);
   const { sensorData, connectionStatus, totalPackets } = useBle();
+  const { activeUserId } = useUserProfile();
   const ai = useAiRisk();
+
+  const isConnected = connectionStatus === "connected";
 
   // Dynamic step detection ref
   const lastAccelMagRef = useRef<number>(9.8);
-  const stepCountRef = useRef<number>(initialDashboardData.activity.steps);
+  const stepCountRef = useRef<number>(0);
   const lastStepTimeRef = useRef<number>(0);
 
-  // Update dashboard reactively when new BLE packets arrive
+  // Fixed interval throttle (2000ms) for secondary sensor card updates
+  const lastSecondaryUpdateRef = useRef<number>(0);
+  const SECONDARY_INTERVAL_MS = 2000;
+
+  // When disconnected or no live packets, fetch real historical session averages from SQLite scoped to active user
   useEffect(() => {
-    if (connectionStatus !== "connected") {
+    if (isConnected && totalPackets > 0) return;
+
+    let isMounted = true;
+
+    async function loadHistoricalStats() {
+      try {
+        const [averages, hrHistory, tempHistory, aqiHistory, moistHistory] = await Promise.all([
+          fetchAllSensorAverages(activeUserId),
+          fetchSensorHistory("HR", 10, activeUserId),
+          fetchSensorHistory("TEMP", 8, activeUserId),
+          fetchSensorHistory("AQI", 8, activeUserId),
+          fetchSensorHistory("HUMIDITY", 8, activeUserId),
+        ]);
+
+        if (!isMounted) return;
+
+        if (averages.hasData) {
+          setHasHistoricalData(true);
+          setData((prev) => ({
+            ...prev,
+            overallStatus: {
+              status: "NORMAL",
+              title: "OFFLINE",
+              subtitle: "Showing Past Session Averages",
+              description: `ESP32 disconnected. Displaying SQLite session averages for ${activeUserId === "offline_local" ? "Offline User" : activeUserId}.`,
+            },
+            heartRate: {
+              ...prev.heartRate,
+              value: averages.hr ?? 0,
+              history: hrHistory.map((h) => ({
+                timestamp: new Date(h.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+                value: h.value,
+              })),
+            },
+            temperature: {
+              ...prev.temperature,
+              value: averages.temp != null && tempHistory.length > 0 ? averages.temp : 0,
+              history: tempHistory.map((h) => h.value),
+            },
+            aqi: {
+              ...prev.aqi,
+              value: averages.aqi != null && aqiHistory.length > 0 ? averages.aqi : 0,
+              statusLabel:
+                averages.aqi != null && aqiHistory.length > 0
+                  ? averages.aqi > 100
+                    ? "Unhealthy"
+                    : "Good"
+                  : "--",
+              history: aqiHistory.map((h) => h.value),
+            },
+            moisture: {
+              ...prev.moisture,
+              value: averages.humidity != null && moistHistory.length > 0 ? averages.humidity : 0,
+              statusLabel: averages.humidity != null && moistHistory.length > 0 ? "Normal" : "--",
+              history: moistHistory.map((h) => h.value),
+            },
+            activity: {
+              ...prev.activity,
+              steps: averages.steps ?? 0,
+            },
+          }));
+        } else {
+          setHasHistoricalData(false);
+          setData(initialDashboardData);
+        }
+      } catch (err) {
+        console.warn("[useDashboardData] Failed to load historical stats:", err);
+      }
+    }
+
+    void loadHistoricalStats();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isConnected, activeUserId]);
+
+  // Update dashboard reactively ONLY when BLE is connected AND live packets are received, throttled to 2-second fixed intervals
+  useEffect(() => {
+    if (!isConnected || totalPackets === 0) {
       return;
     }
+
+    const nowMs = Date.now();
+    const isEmergency = Boolean(ai.sosRecommended || ai.risks.fall.detected);
+    const shouldUpdate =
+      isEmergency ||
+      lastSecondaryUpdateRef.current === 0 ||
+      nowMs - lastSecondaryUpdateRef.current >= SECONDARY_INTERVAL_MS;
+
+    if (!shouldUpdate) {
+      return;
+    }
+
+    lastSecondaryUpdateRef.current = nowMs;
+
 
     setData((prev) => {
       let next = { ...prev };
@@ -215,7 +319,7 @@ export function useDashboardData() {
 
       return next;
     });
-  }, [totalPackets, connectionStatus, sensorData, ai]);
+  }, [connectionStatus, sensorData, ai]);
 
   const refreshData = useCallback(async () => {
     setIsLoading(true);
@@ -231,6 +335,10 @@ export function useDashboardData() {
   return {
     data,
     isLoading,
+    isConnected,
+    hasHistoricalData,
+    connectionStatus,
     refreshData,
   };
 }
+

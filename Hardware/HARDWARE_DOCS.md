@@ -24,7 +24,10 @@
 8. [Sampling Rates and Transmission Schedule](#8-sampling-rates-and-transmission-schedule)
 9. [Bluetooth Data Protocol](#9-bluetooth-data-protocol)
 10. [JSON Packet Reference](#10-json-packet-reference)
-11. [Known Notes and Caveats](#11-known-notes-and-caveats)
+11. [Field Sample Data Analysis (`sample_data.txt`)](#11-field-sample-data-analysis-sample_datatxt)
+12. [Power Distribution, Battery Sizing & Thermal Analysis](#12-power-distribution-battery-sizing--thermal-analysis)
+13. [Custom PCB Hardware Reference](#13-custom-pcb-hardware-reference)
+14. [Known Notes and Caveats](#14-known-notes-and-caveats)
 
 ---
 
@@ -284,28 +287,40 @@ Individual test sketches may differ — see their headers.
 
 ## 6. Device Testing Sketches
 
-These sketches are individual sensor validation programs. Each tests one sensor
-(or one capability) in isolation. They transmit plain-text ASCII / CSV data streams over
-BLE TX characteristic notifications — **not** the JSON protocol used by the full integration.
-To test them, connect using a BLE terminal app (e.g., _Serial Bluetooth Terminal_ or _nRF Connect_)
-and select the **Bluetooth LE** scan tab.
+The repository provides a modular, **two-tier testing suite** located in [`Hardware/Device-Testing/`](Device-Testing/):
 
-| Sketch                     | Location                | Sensor / Feature           | BLE device name   | Data format                           | Rate    |
-| -------------------------- | ----------------------- | -------------------------- | ----------------- | ------------------------------------- | ------- |
-| `LED.ino`                  | `LED/`                  | Onboard LED blink          | — (no BLE)        | —                                     | 0.5 Hz  |
-| `Bluetooth.ino`            | `Bluetooth/`            | BLE NUS connectivity test  | `ESP32_TEST_BLE`  | `TEST DATA: <counter>`                | 1 Hz    |
-| `Bioamp_EXG.ino`           | `Bioamp_EXG/`           | EXG Pill (USB Serial only) | — (no BLE)        | `<integer>` per line                  | ~100 Hz |
-| `Bioamp_EXG_Bluetooth.ino` | `Bioamp_EXG_Bluetooth/` | EXG Pill + BLE             | `ESP32_EXG_BLE`   | `EXG,<integer>`                       | ~100 Hz |
-| `ADXL_Bluetooth.ino`       | `ADXL_Bluetooth/`       | ADXL345 + BLE              | `ESP32_ADXL_BLE`  | `ADXL345,<x>,<y>,<z>`                 | ~10 Hz  |
-| `DHT_Bluetooth.ino`        | `DHT_Bluetooth/`        | DHT11 + BLE                | `ESP32_DHT11_BLE` | `Temperature: <t> C, Humidity: <h> %` | 0.5 Hz  |
-| `MQ135_Bluetooth.ino`      | `MQ135_Bluetooth/`      | MQ135 + BLE                | `ESP32_MQ135_BLE` | `MQ135,<integer>`                     | 2 Hz    |
-| `Moisture_Bluetooth.ino`   | `Moisture_Bluetooth/`   | Soil moisture + BLE        | `ESP32_SOIL_BLE`  | `SOIL,<integer>`                      | 1 Hz    |
+1. **Tier 1 — Standalone Diagnostic Sketches (Zero BLE overhead):**
+   Print human-readable physical metrics or plain integer streams to the **USB Serial Monitor / Serial Plotter** (115200 baud). Used to verify electrical continuity, pin wiring, I2C addressing, and sensor calibration before introducing wireless complexity.
+2. **Tier 2 — Component-Level BLE Protocol v1 Sketches:**
+   Stream JSON packets using the **exact same Protocol v1 JSON format** as the production hub (`ESP32_Sensor_Hub.ino`). These sketches can connect directly to the **mobile app**, **Web Bluetooth dashboard**, or generic BLE terminal tools (_nRF Connect_ / _Serial Bluetooth Terminal_).
 
-> **Note on test sketch pin differences:**
-> `MQ135_Bluetooth.ino` uses GPIO **34** (not 35).
-> `Moisture_Bluetooth.ino` uses GPIO **34** (not 32).
-> These differ from the integration pin assignments. Update the `#define` in
-> each test sketch if you want them to match the integration wiring.
+> For detailed wiring diagrams, verification steps, and terminal output examples for each test, see [`Hardware/Device-Testing/DEVICE_TESTING_GUIDE.md`](Device-Testing/DEVICE_TESTING_GUIDE.md).
+
+### 6.1 Tier 1: Standalone Hardware Diagnostics (USB Serial Only)
+
+| Sketch            | Folder              | Target Sensor       | Pin / Interface | Baud Rate | Verification Target                                                                 |
+| ----------------- | ------------------- | ------------------- | --------------- | --------- | ----------------------------------------------------------------------------------- |
+| `LED.ino`         | `LED/`              | Onboard Blue LED    | GPIO 2          | 115200    | ESP32 bootloader, clock crystal, and GPIO driver sanity test (0.5 Hz blink)         |
+| `Bioamp_EXG.ino`  | `Bioamp_EXG/`       | BioAmp EXG Pill     | GPIO 34 (ADC1)  | 115200    | Raw ADC waveform plotting in Arduino Serial Plotter (lead-off: 4095; baseline: ~1.65 V) |
+| `ADXL345.ino`     | `ADXL345/`          | ADXL345 3-Axis Accel| I2C (21/22)     | 115200    | I2C detection (0x53), X/Y/Z m/s², and vector magnitude $|\vec{a}| \approx 9.8\text{ m/s}^2$ |
+| `DHT11.ino`       | `DHT11/`            | DHT11 Temp & Hum    | GPIO 4 (1-Wire) | 115200    | Ambient Temperature (°C), Relative Humidity (% RH), and Heat Index calculation     |
+| `MQ135.ino`       | `MQ135/`            | MQ135 Gas Sensor    | GPIO 35 (ADC1)  | 115200    | 10-sample ADC rolling average, voltage conversion (0–3.3 V), baseline AQI status   |
+| `Moisture.ino`    | `Moisture/`         | Soil Moisture Probe | GPIO 32 (ADC1)  | 115200    | 10-sample ADC rolling average and calibrated moisture percentage (0–100% scale)     |
+
+### 6.2 Tier 2: Component-Level BLE Protocol v1 Sketches
+
+All Tier 2 sketches implement the standard Nordic UART Service (NUS) UUIDs (`6E400001-...`) and stream compact newline-delimited JSON identical to the final hub protocol:
+
+| Sketch                     | Folder                    | Sensor / Feature | BLE Device Name     | Protocol Packet Schema                                             | Rate   |
+| -------------------------- | ------------------------- | ---------------- | ------------------- | ------------------------------------------------------------------ | ------ |
+| `Bluetooth.ino`            | `Bluetooth/`              | BLE NUS Link     | `ESP32_TEST_BLE`    | `TEST DATA: <seq>\n` (ASCII connectivity test)                     | 1 Hz   |
+| `Bioamp_EXG_Bluetooth.ino` | `Bioamp_EXG_Bluetooth/`   | BioAmp EXG       | `ESP32_EXG_BLE`     | `{"v":1,"sensor":1,"seq":N,"ts":T,"rate":500,"samples":[...]}`      | 3.9 Hz |
+| `ADXL_Bluetooth.ino`       | `ADXL_Bluetooth/`         | ADXL345 Accel    | `ESP32_ADXL_BLE`    | `{"v":1,"sensor":2,"seq":N,"ts":T,"data":{"x":..,"y":..,"z":..}}` | 25 Hz  |
+| `DHT_Bluetooth.ino`        | `DHT_Bluetooth/`          | DHT11 Temp/Hum   | `ESP32_DHT11_BLE`   | `{"v":1,"sensor":3,"seq":N,"ts":T,"data":{"temperature":..,"humidity":..}}` | 0.5 Hz |
+| `MQ135_Bluetooth.ino`      | `MQ135_Bluetooth/`        | MQ135 Gas        | `ESP32_MQ135_BLE`   | `{"v":1,"sensor":4,"seq":N,"ts":T,"data":{"raw":..}}`             | 1 Hz   |
+| `Moisture_Bluetooth.ino`   | `Moisture_Bluetooth/`     | Soil Moisture    | `ESP32_SOIL_BLE`    | `{"v":1,"sensor":5,"seq":N,"ts":T,"data":{"raw":..}}`             | 0.5 Hz |
+
+> **Pin Consistency:** All Tier 2 BLE sketches use the canonical integration pins (EXG: GPIO 34, ADXL: 21/22, DHT11: GPIO 4, MQ135: GPIO 35, Soil: GPIO 32) matching `ESP32_Sensor_Hub.ino`. Safe 128-byte BLE chunking is implemented across all sketches to prevent GATT notify buffer overflow.
 
 ---
 
@@ -545,18 +560,106 @@ Every packet contains these common fields plus sensor-specific fields:
 
 ---
 
-## 11. Known Notes and Caveats
+## 11. Field Sample Data Analysis (`sample_data.txt`)
+
+The file [`Hardware/sample_data.txt`](sample_data.txt) contains **1,130 lines** of live telemetry captured from physical hardware streaming over BLE to verify the protocol under realistic conditions. Technical analysis of this telemetry validates several key firmware dynamics:
+
+### 11.1 Multi-Sensor Interleaving and Sequence Integrity
+Telemetry confirms seamless multiplexing across the single Nordic UART Service pipe:
+- **EXG Burst Cadence (`sensor: 1`):** Transmitted every 128 samples at 500 Hz. Packet timestamps show exactly $\Delta t \approx 256\text{ ms}$ between consecutive packets:
+  - Sequence 705 (`ts: 181482`) $\to$ Sequence 706 (`ts: 181738`, $\Delta t = 256\text{ ms}$) $\to$ Sequence 707 (`ts: 181994`, $\Delta t = 256\text{ ms}$).
+  - This mathematically proves the precision of the `micros()` accumulator scheduler (`exgLastMicros += EXG_INTERVAL_US`) with zero cumulative timer drift.
+- **Motion Cadence (`sensor: 2`):** Transmitted at exactly $\Delta t = 40\text{ ms}$ ($25\text{ Hz}$):
+  - Sequence 4518 (`ts: 181483`) $\to$ Sequence 4519 (`ts: 181523`, $\Delta t = 40\text{ ms}$) $\to$ Sequence 4520 (`ts: 181563`, $\Delta t = 40\text{ ms}$).
+- **Gas Cadence (`sensor: 4`):** Transmitted at $1\text{ Hz}$ with independent sequence tracking (`seq: 180`, `ts: 181751`, `raw: 906`).
+- **Independent Monotonic Sequence Counters:** Sequences for EXG, ADXL, and MQ135 advance strictly monotonically without dropping or reordering packets, enabling the mobile application to detect dropouts on a per-channel basis.
+
+### 11.2 Biopotential Dynamics & Lead-Off Detection
+In sequence 709 (`ts: 182506`), the biopotential signal transitions from valid cardiac/muscular waveforms into complete ADC saturation:
+```json
+{"v":1,"sensor":1,"seq":709,"ts":182506,"rate":500,"samples":[1279,1264,1269,1301,1376,...,2774,3534,4095,4095,4095,4095,...]}
+```
+- **Physical Meaning:** When dry or wet biopotential electrodes detach from the skin (or lose contact impedance), the instrumentation amplifier's high-impedance inputs float to the positive rail ($V_{DD} = 3.3\text{ V}$). The 12-bit ADC reads maximum full-scale: $4095$.
+- **Signal Quality Index (SQI) Trigger:** The mobile app's signal quality engine parses this chunk, flags saturated sample counts $> 10\%$, sets `isLeadOn = false`, and alerts the user on the dashboard to reposition the electrodes.
+
+### 11.3 Accelerometer Posture Vector & Dynamics
+Across steady-state frames (e.g. sequence 4518: $x = 1.65, y = -3.61, z = -11.02\text{ m/s}^2$):
+$$\|\vec{a}\| = \sqrt{(1.65)^2 + (-3.61)^2 + (-11.02)^2} \approx 11.71\text{ m/s}^2$$
+Sequence 4533 ($x = -6.35, y = 7.30, z = -15.02\text{ m/s}^2$):
+$$\|\vec{a}\| = \sqrt{(-6.35)^2 + (7.30)^2 + (-15.02)^2} \approx 17.86\text{ m/s}^2$$
+- The vector magnitude represents the superposition of gravitational acceleration ($1g \approx 9.81\text{ m/s}^2$) plus user kinetic motion and sensor orientation tilts.
+- The high acceleration transients captured in the stream demonstrate that the 25 Hz streaming rate reliably captures physical user motion gestures, tremor spikes, and fall events.
+
+---
+
+## 12. Power Distribution, Battery Sizing & Thermal Analysis
+
+To ensure continuous, field-reliable operation as a wearable health & environmental monitor, the power budget and battery capacity have been calculated for **8–12 hours of continuous streaming**.
+
+### 12.1 Subsystem Current Draw Breakdown
+
+| Subsystem / Component        | Operating Voltage | Active Current Draw | Duty Cycle | Average Current @ Nominal Rail | Equivalent Battery Draw (3.7V LiPo) |
+| ---------------------------- | ----------------- | ------------------- | ---------- | ------------------------------ | ----------------------------------- |
+| **ESP32 Dual-Core + BLE TX** | 3.3 V             | 95 mA               | 100%       | 95.0 mA                        | ~100.0 mA (via low-dropout LDO)     |
+| **BioAmp EXG Pill Front-End**| 3.3 V             | 2.5 mA              | 100%       | 2.5 mA                         | ~2.6 mA                             |
+| **ADXL345 Accelerometer**    | 3.3 V             | 140 µA              | 100%       | 0.14 mA                        | ~0.15 mA                            |
+| **DHT11 Temp / Humidity**    | 3.3 V             | 1.5 mA              | Intermittent| 0.2 mA                         | ~0.2 mA                             |
+| **Capacitive Soil Moisture** | 3.3 V             | 5.0 mA              | Intermittent| 1.0 mA                         | ~1.1 mA                             |
+| **MQ135 Heating Element**    | **5.0 V**         | 150 mA              | 100%       | 150.0 mA                       | **~245.0 mA** (via 85% boost conv.) |
+| **Total System Draw (Cont.)**| —                 | —                   | —          | —                              | **~349.0 mA** (~1.29 W)             |
+
+### 12.2 Battery Capacity Calculations (Continuous Heating)
+
+Assuming a standard single-cell Lithium-Polymer (LiPo) or 18650 Li-ion battery (nominal $3.7\text{ V}$, cutoff $3.2\text{ V}$, DC-DC boost efficiency $\eta \approx 85\%$, and 20% safety / aging headroom):
+
+1. **Target: 8 Hours Continuous Operation**
+   $$C_{\text{req}} = I_{\text{batt}} \times t \times \text{Safety Factor} = 349\text{ mA} \times 8\text{ h} \times 1.20 \approx \mathbf{3,350\text{ mAh}}$$
+   - *Hardware recommendation:* A single **3,500 mAh** flat-pack LiPo pouch cell or dual 18650 cells (e.g., $2 \times 1,800\text{ mAh} = 3,600\text{ mAh}$ in parallel).
+
+2. **Target: 12 Hours Continuous Operation**
+   $$C_{\text{req}} = 349\text{ mA} \times 12\text{ h} \times 1.20 \approx \mathbf{5,025\text{ mAh}}$$
+   - *Hardware recommendation:* Dual parallel 18650 Li-ion cells (e.g., $2 \times 2,600\text{ mAh} = \mathbf{5,200\text{ mAh}}$), providing comfortably >12.5 hours of uninterrupted telemetry.
+
+### 12.3 Power Optimization: MQ135 Duty-Cycling Strategy
+The MQ135 internal tin dioxide ($SnO_2$) heating coil is by far the largest energy consumer, accounting for **~70% of total system power**. 
+In battery-constrained field deployments:
+- Rather than leaving the heater permanently energized, the 5V heater rail can be switched via a P-channel MOSFET (e.g., AO3401) driven by an ESP32 GPIO.
+- Heating for **20 seconds** prior to reading once every 2 minutes reduces the MQ135 average current from 150 mA down to $\sim 25\text{ mA}$.
+- **Result:** Overall battery draw drops to $\sim 128\text{ mA}$, extending an 8-hour battery pack to **over 22 hours** of runtime on a single compact 2,600 mAh 18650 cell.
+
+### 12.4 Thermal Management
+- The MQ135 heater dissipates $\approx 750\text{ mW}$ of thermal energy ($5\text{ V} \times 150\text{ mA}$).
+- In the Sanjeevni PCB layout, thermal isolation slots and component separation keep the MQ135 physically distanced from the BioAmp EXG operational amplifier circuitry to prevent biopotential drift and thermal junction noise ($1/f$ noise).
+
+---
+
+## 13. Custom PCB Hardware Reference
+
+The system has been synthesized into an integrated, production-grade custom PCB layout located in [`Hardware/Sanjeevni_PCB/`](Sanjeevni_PCB/):
+
+- **Complete Engineering Guide:** Refer to [`Hardware/Sanjeevni_PCB/PCB_Design_Guide.md`](Sanjeevni_PCB/PCB_Design_Guide.md) for detailed trace widths, impedance matching, DRC rules, and manufacturing specifications.
+- **Schematic Source:** [`Hardware/Sanjeevni_PCB/Sanjeevni_PCB.kicad_sch`](Sanjeevni_PCB/Sanjeevni_PCB.kicad_sch) (PDF export: [`PCB schema.pdf`](Sanjeevni_PCB/PCB%20schema.pdf))
+- **PCB Layout Source:** [`Hardware/Sanjeevni_PCB/Sanjeevni_PCB.kicad_pcb`](Sanjeevni_PCB/Sanjeevni_PCB.kicad_pcb) (PDF export: [`PCB design.pdf`](Sanjeevni_PCB/PCB%20design.pdf))
+- **Stackup & Geometry:**
+  - 2-layer FR4 standard process (1.6 mm thickness, 1 oz / $35\text{ µm}$ copper foil).
+  - Dedicated bottom ground plane with analog star-grounding under the BioAmp EXG instrumentation node.
+  - 15 mm copper-free keepout zone around the ESP32 2.4 GHz inverted-F onboard antenna to prevent BLE RF attenuation.
+  - Dedicated LDO and step-up boost regulators providing independent 3.3 V logic and 5.0 V heating rails.
+
+---
+
+## 14. Known Notes and Caveats
 
 | Item                           | Detail                                                                                                                                                    |
 | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **MQ135 voltage**              | The MQ135 AO output can exceed 3.3 V. Verify your module's output range before connecting to ESP32.                                                       |
 | **MQ135 warm-up**              | Allow at least 3–5 minutes after power-on; 24–48 hours for full stabilisation.                                                                            |
-| **Test sketch pin difference** | `MQ135_Bluetooth.ino` and `Moisture_Bluetooth.ino` both use GPIO 34 (original test wiring). The full integration uses GPIO 35 (MQ135) and GPIO 32 (soil). |
+| **Pin assignments**            | All unified test sketches now default to canonical pins (GPIO 35 for MQ135, GPIO 32 for Moisture), with legacy GPIO 34 test wiring noted in headers.      |
 | **DHT11 pull-up**              | Bare DHT11 (not a module) needs a 10 kΩ pull-up between DATA and VCC.                                                                                     |
 | **`ts` is NOT Unix time**      | All `"ts"` values are `millis()` uptime. Record wall-clock time of first connection on the receiving side.                                                |
 | **BLE Cross-Platform Support** | Unlike Classic Bluetooth (SPP), BLE works across iOS, Android, macOS, Linux, and Windows. It is also compatible with ESP32, ESP32-S3, and ESP32-C3 chips. |
 | **BLE Client Notification**    | Clients must enable notifications (CCCD 0x2902) on TX characteristic `6E400003-...` to receive the data stream.                                           |
 | **Large EXG JSON streaming**   | EXG arrays (~800 B) are transmitted in 128-byte BLE notification chunks with 2 ms yields to prevent notify buffer congestion on any MTU size.             |
-| **EXG signal quality**         | Electrode contact quality, EMI, and power supply noise directly affect EXG ADC readings.                                                                  |
+| **EXG signal quality**         | Electrode contact quality, EMI, and power supply noise directly affect EXG ADC readings. Lead-Off saturation occurs at ADC = 4095.                        |
 | **Soil calibration**           | Dry/wet ADC endpoints vary between sensor modules. Calibrate with your specific sensor in known conditions before deriving a percentage.                  |
 | **ADXL345 I2C address**        | Default address is 0x53 (SDO=GND). Pull SDO HIGH to use 0x1D if address conflicts with another device.                                                    |

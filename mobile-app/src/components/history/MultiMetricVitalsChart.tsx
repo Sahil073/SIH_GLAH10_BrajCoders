@@ -15,12 +15,15 @@ import Svg, {
 import {
   HistoryPoint,
   MetricKey,
+  MetricSummary,
   METRIC_CONFIGS,
 } from "@/data/mockHistoryData";
+import { useTheme } from "@/store/themeStore";
 
 interface MultiMetricVitalsChartProps {
   points: HistoryPoint[];
   xLabels: string[];
+  summaries?: Record<MetricKey, MetricSummary>;
   height?: number;
 }
 
@@ -53,20 +56,22 @@ function createSplinePath(pts: { x: number; y: number }[]): string {
 export function MultiMetricVitalsChart({
   points,
   xLabels,
+  summaries,
   height = 220,
 }: MultiMetricVitalsChartProps) {
+  const { colors, isDark } = useTheme();
   const [containerWidth, setContainerWidth] = useState<number>(340);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(
     Math.floor(points.length / 2)
   );
 
-  // Active metric toggles - user can toggle visibility by tapping legend
+  // Toggle active metrics on the chart
   const [activeMetrics, setActiveMetrics] = useState<Record<MetricKey, boolean>>({
     hr: true,
     spo2: true,
     temp: true,
-    aqi: true,
-    moisture: false, // hidden by default to keep initial view clean, tap to show
+    aqi: false,
+    moisture: false,
     steps: false,
   });
 
@@ -77,64 +82,122 @@ export function MultiMetricVitalsChart({
     }));
   };
 
-  const handleLayout = (e: LayoutChangeEvent) => {
-    const w = e.nativeEvent.layout.width;
-    if (w > 0) setContainerWidth(w);
-  };
+  const allKeys: MetricKey[] = ["hr", "spo2", "temp", "aqi", "moisture", "steps"];
 
-  // Layout calculations
+  // Chart dimensions & layout
+  const paddingLeft = 10;
+  const paddingRight = 10;
+  const paddingTop = 15;
+  const paddingBottom = 30;
   const yAxisWidth = 32;
-  const paddingRight = 12;
-  const paddingTop = 14;
-  const paddingBottom = 28;
 
-  const chartAreaWidth = containerWidth - yAxisWidth - paddingRight;
-  const chartAreaHeight = height - paddingTop - paddingBottom;
+  const chartAreaWidth = Math.max(containerWidth - yAxisWidth - paddingRight, 100);
+  const chartAreaHeight = Math.max(height - paddingTop - paddingBottom, 80);
 
-  const yTicks = [100, 75, 50, 25, 0];
-
-  // Map norm (0-100) to SVG Y coordinate
-  const getY = (normVal: number) => {
-    const clamped = Math.max(0, Math.min(100, normVal));
-    return paddingTop + (1 - clamped / 100) * chartAreaHeight;
-  };
-
-  // Map point index to SVG X coordinate
+  // Coordinate scales
   const getX = (index: number) => {
     if (points.length <= 1) return yAxisWidth + chartAreaWidth / 2;
     return yAxisWidth + (index / (points.length - 1)) * chartAreaWidth;
   };
 
-  // Handle touch scrub
-  const handleTouch = (e: GestureResponderEvent) => {
-    const touchX = e.nativeEvent.locationX;
-    let closestIndex = 0;
-    let closestDist = Infinity;
-
-    points.forEach((_, idx) => {
-      const x = getX(idx);
-      const dist = Math.abs(touchX - x);
-      if (dist < closestDist) {
-        closestDist = dist;
-        closestIndex = idx;
-      }
-    });
-
-    setSelectedIndex(closestIndex);
+  const getY = (normValue: number) => {
+    const clamped = Math.max(0, Math.min(100, normValue));
+    return paddingTop + chartAreaHeight - (clamped / 100) * chartAreaHeight;
   };
 
-  const selectedPoint = selectedIndex !== null ? points[selectedIndex] : null;
+  const yTicks = [100, 75, 50, 25, 0];
 
-  const allKeys: MetricKey[] = ["hr", "spo2", "temp", "aqi", "moisture", "steps"];
+  const handleTouch = (evt: GestureResponderEvent) => {
+    const touchX = evt.nativeEvent.locationX;
+    const relativeX = touchX - yAxisWidth;
+    if (relativeX < 0 || relativeX > chartAreaWidth) return;
+
+    const ratio = relativeX / chartAreaWidth;
+    const rawIdx = Math.round(ratio * (points.length - 1));
+    const clampedIdx = Math.max(0, Math.min(points.length - 1, rawIdx));
+    setSelectedIndex(clampedIdx);
+  };
+
+  const handleLayout = (evt: LayoutChangeEvent) => {
+    const width = evt.nativeEvent.layout.width;
+    if (width > 0 && Math.abs(width - containerWidth) > 5) {
+      setContainerWidth(width);
+    }
+  };
+
+  const selectedPoint =
+    selectedIndex !== null && points[selectedIndex] ? points[selectedIndex] : null;
+
+  if (points.length < 2) {
+    return (
+      <View
+        onLayout={handleLayout}
+        style={{
+          backgroundColor: colors.cardBg,
+          borderColor: colors.cardBorder,
+        }}
+        className="rounded-3xl p-5 border shadow-sm mb-5"
+      >
+        <View className="w-full flex-row items-center justify-between mb-3">
+          <Text
+            style={{ color: colors.textPrimary }}
+            className="font-poppins-bold text-[17px]"
+          >
+            Vitals Trend
+          </Text>
+          <View
+            style={{ backgroundColor: colors.backgroundSecondary }}
+            className="px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-800"
+          >
+            <Text
+              style={{ color: colors.textMuted }}
+              className="font-poppins-medium text-[10.5px]"
+            >
+              No Live Session
+            </Text>
+          </View>
+        </View>
+
+        <View
+          style={{
+            borderColor: isDark ? "#2A3830" : "#E5E7EB",
+            backgroundColor: isDark ? colors.backgroundSecondary : "#F9FAFB",
+          }}
+          className="w-full py-8 px-4 rounded-2xl border border-dashed items-center justify-center"
+        >
+          <Text className="text-2xl mb-2">📈</Text>
+          <Text
+            style={{ color: colors.textPrimary }}
+            className="font-poppins-semibold text-sm text-center"
+          >
+            Not Enough Data Points
+          </Text>
+          <Text
+            style={{ color: colors.textMuted }}
+            className="font-poppins-regular text-xs text-center mt-1 max-w-[260px]"
+          >
+            Connect the Sanjeevni wearable to record continuous vitals for this time period.
+          </Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View
       onLayout={handleLayout}
-      className="bg-white rounded-3xl p-4.5 border border-[#EDE9E2] shadow-sm mb-5"
+      style={{
+        backgroundColor: colors.cardBg,
+        borderColor: colors.cardBorder,
+      }}
+      className="rounded-3xl p-4.5 border shadow-sm mb-5"
     >
       {/* Title & Legend Row */}
       <View className="mb-2">
-        <Text className="font-poppins-bold text-[17px] text-[#161616]">
+        <Text
+          style={{ color: colors.textPrimary }}
+          className="font-poppins-bold text-[17px]"
+        >
           Vitals Trend
         </Text>
 
@@ -154,13 +217,14 @@ export function MultiMetricVitalsChart({
                 <View
                   className="w-2.5 h-2.5 rounded-full mr-1.5"
                   style={{
-                    backgroundColor: isActive ? config.color : "#D1D5DB",
+                    backgroundColor: isActive ? config.color : isDark ? "#374151" : "#D1D5DB",
                   }}
                 />
                 <Text
-                  className={`font-poppins-medium text-xs ${
-                    isActive ? "text-[#161616]" : "text-[#9CA3AF]"
-                  }`}
+                  style={{
+                    color: isActive ? colors.textPrimary : colors.textMuted,
+                  }}
+                  className="font-poppins-medium text-xs"
                 >
                   {config.shortLabel}
                 </Text>
@@ -188,7 +252,7 @@ export function MultiMetricVitalsChart({
                   y1={y}
                   x2={containerWidth - paddingRight}
                   y2={y}
-                  stroke="#F3F4F6"
+                  stroke={isDark ? "#243129" : "#F3F4F6"}
                   strokeWidth="1"
                 />
               </G>
@@ -201,7 +265,7 @@ export function MultiMetricVitalsChart({
             y1={paddingTop}
             x2={yAxisWidth}
             y2={paddingTop + chartAreaHeight}
-            stroke="#E5E7EB"
+            stroke={isDark ? "#324338" : "#E5E7EB"}
             strokeWidth="1.2"
           />
 
@@ -211,13 +275,22 @@ export function MultiMetricVitalsChart({
             y1={paddingTop + chartAreaHeight}
             x2={containerWidth - paddingRight}
             y2={paddingTop + chartAreaHeight}
-            stroke="#E5E7EB"
+            stroke={isDark ? "#324338" : "#E5E7EB"}
             strokeWidth="1.2"
           />
 
           {/* Render Curve and Data Points for each Active Metric */}
           {allKeys.map((key) => {
             if (!activeMetrics[key]) return null;
+            if (
+              summaries &&
+              (summaries[key]?.avg === ("—" as any) || summaries[key]?.avg === null)
+            ) {
+              return null;
+            }
+            if (points.every((p) => p.raw[key] <= 0)) {
+              return null;
+            }
             const config = METRIC_CONFIGS[key];
 
             const coords = points.map((p, idx) => ({
@@ -317,12 +390,24 @@ export function MultiMetricVitalsChart({
 
       {/* Selected Time Scrubbed Values Bar */}
       {selectedPoint && (
-        <View className="bg-[#F8F7F4] rounded-2xl p-3 border border-[#EAE6DF] mt-1">
+        <View
+          style={{
+            backgroundColor: colors.backgroundSecondary,
+            borderColor: colors.cardBorder,
+          }}
+          className="rounded-2xl p-3 border mt-1"
+        >
           <View className="flex-row items-center justify-between mb-2">
-            <Text className="font-poppins-semibold text-xs text-[#161616]">
+            <Text
+              style={{ color: colors.textPrimary }}
+              className="font-poppins-semibold text-xs"
+            >
               {selectedPoint.timeLabel} Record
             </Text>
-            <Text className="font-poppins-regular text-[11px] text-[#8A9A90]">
+            <Text
+              style={{ color: colors.textMuted }}
+              className="font-poppins-regular text-[11px]"
+            >
               Touch anywhere to inspect
             </Text>
           </View>
@@ -332,7 +417,12 @@ export function MultiMetricVitalsChart({
             {allKeys.map((key) => {
               if (!activeMetrics[key]) return null;
               const config = METRIC_CONFIGS[key];
-              const val = selectedPoint.raw[key];
+              const rawVal = selectedPoint.raw[key];
+              const hasData =
+                summaries && (summaries[key]?.avg as any) !== "—"
+                  ? rawVal > 0
+                  : rawVal > 0;
+              const displayVal = hasData ? `${rawVal} ${config.unit}` : "--";
 
               return (
                 <View key={key} className="w-1/3 flex-row items-center pr-2">
@@ -340,10 +430,16 @@ export function MultiMetricVitalsChart({
                     className="w-2 h-2 rounded-full mr-1.5"
                     style={{ backgroundColor: config.color }}
                   />
-                  <Text className="font-poppins-regular text-xs text-[#55695E]">
+                  <Text
+                    style={{ color: colors.textSecondary }}
+                    className="font-poppins-regular text-xs"
+                  >
                     {config.shortLabel}:{" "}
-                    <Text className="font-poppins-bold text-[#161616]">
-                      {val} {config.unit}
+                    <Text
+                      style={{ color: colors.textPrimary }}
+                      className="font-poppins-bold"
+                    >
+                      {displayVal}
                     </Text>
                   </Text>
                 </View>

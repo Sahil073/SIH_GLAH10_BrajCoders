@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { View, Text, ScrollView, TouchableOpacity, RefreshControl } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   AlertRecord,
@@ -8,7 +8,9 @@ import {
   AlertIconType,
   INITIAL_ALERTS,
 } from "@/data/mockAlertsData";
-import { fetchAlerts, ackAlert } from "@/database";
+import { fetchAlerts, ackAlert, removeAlert, removeAllAlerts } from "@/database";
+import { useUserProfile } from "@/store/userProfileStore";
+import { useTheme } from "@/store/themeStore";
 import {
   CriticalShieldIcon,
   WarningTriangleIcon,
@@ -67,12 +69,15 @@ function getAlertIcon(iconType: AlertIconType, severity: AlertSeverity, size = 1
 }
 
 export default function AlertsScreen() {
-  const [alerts, setAlerts] = useState<AlertRecord[]>(INITIAL_ALERTS);
+  const { activeUserId } = useUserProfile();
+  const { colors, isDark } = useTheme();
+
+  const [alerts, setAlerts] = useState<AlertRecord[]>([]);
   const [refreshing, setRefreshing] = useState<boolean>(false);
 
   const loadAlerts = useCallback(async () => {
     try {
-      const dbAlerts = await fetchAlerts(30);
+      const dbAlerts = await fetchAlerts(50, activeUserId);
       if (dbAlerts && dbAlerts.length > 0) {
         const mapped: AlertRecord[] = dbAlerts.map((row: any) => {
           let iconType: AlertIconType = "heart";
@@ -80,7 +85,7 @@ export default function AlertsScreen() {
           if (row.category === "HEAT") {
             iconType = "temp";
             category = "environment";
-          } else if (row.category === "RESPIRATORY") {
+          } else if (row.category === "RESPIRATORY" || row.category === "AQI") {
             iconType = "aqi";
             category = "environment";
           } else if (row.category === "FALL") {
@@ -93,7 +98,9 @@ export default function AlertsScreen() {
           else if (row.severity === "MODERATE") severity = "warning";
 
           const date = new Date(row.timestamp);
-          const timeStr = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+          const timeStr = isNaN(date.getTime())
+            ? row.timestamp
+            : `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 
           return {
             id: String(row.id),
@@ -107,14 +114,16 @@ export default function AlertsScreen() {
           };
         });
         setAlerts(mapped);
+      } else {
+        setAlerts([]);
       }
     } catch (e) {
       console.warn("Failed to load alerts from DB:", e);
     }
-  }, []);
+  }, [activeUserId]);
 
   useEffect(() => {
-    loadAlerts();
+    void loadAlerts();
     const interval = setInterval(loadAlerts, 3000);
     return () => clearInterval(interval);
   }, [loadAlerts]);
@@ -129,8 +138,34 @@ export default function AlertsScreen() {
     );
   };
 
+  const handleDeleteAlert = async (id: string) => {
+    const numId = Number(id);
+    if (!isNaN(numId)) {
+      await removeAlert(numId);
+    }
+    setAlerts((prev) => prev.filter((a) => a.id !== id));
+  };
+
+  const handleClearAll = async () => {
+    Alert.alert(
+      "Clear All Alerts",
+      `Are you sure you want to dismiss all alerts for ${activeUserId}?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Clear All",
+          style: "destructive",
+          onPress: async () => {
+            await removeAllAlerts(activeUserId);
+            setAlerts([]);
+          },
+        },
+      ]
+    );
+  };
+
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#F7F5F0" }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       <ScrollView
         contentContainerStyle={{ paddingBottom: 110, paddingTop: 16 }}
         showsVerticalScrollIndicator={false}
@@ -146,51 +181,91 @@ export default function AlertsScreen() {
           />
         }
       >
-        {/* Simple Minimal Header */}
-        <View className="mb-5">
-          <Text className="font-poppins-bold text-[28px] text-[#161616]">
-            Alerts
-          </Text>
-          <Text className="font-poppins-regular text-xs text-[#8A9A90] mt-0.5">
-            Real-time health & safety stream
-          </Text>
+        {/* Header with Title and Clear All Action */}
+        <View className="flex-row items-center justify-between mb-5">
+          <View>
+            <Text
+              style={{ color: colors.textPrimary }}
+              className="font-poppins-bold text-[28px]"
+            >
+              Alerts
+            </Text>
+            <Text
+              style={{ color: colors.textSecondary }}
+              className="font-poppins-regular text-xs mt-0.5"
+            >
+              {activeUserId === "offline_local"
+                ? "Phone offline alerts"
+                : `Alerts for ${activeUserId}`}
+            </Text>
+          </View>
+
+          {alerts.length > 0 && (
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={handleClearAll}
+              className="px-3 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900"
+            >
+              <Text className="font-poppins-semibold text-xs text-rose-600 dark:text-rose-400">
+                Clear All
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Empty State */}
         {alerts.length === 0 ? (
-          <View className="bg-white rounded-2xl p-8 items-center justify-center border border-[#EDE9E2] mt-6">
-            <View className="w-12 h-12 rounded-full bg-emerald-50 items-center justify-center mb-3">
+          <View
+            style={{
+              backgroundColor: colors.cardBg,
+              borderColor: colors.cardBorder,
+            }}
+            className="rounded-2xl p-8 items-center justify-center border mt-6 shadow-xs"
+          >
+            <View className="w-12 h-12 rounded-full bg-emerald-500/10 items-center justify-center mb-3">
               <ShieldSafeIcon size={24} color="#16A34A" />
             </View>
-            <Text className="font-poppins-medium text-sm text-[#161616]">
-              No Alerts
+            <Text
+              style={{ color: colors.textPrimary }}
+              className="font-poppins-medium text-sm"
+            >
+              No Active Alerts
             </Text>
-            <Text className="font-poppins-regular text-xs text-[#8A9A90] mt-1 text-center">
-              All health and environmental vitals are within normal range.
+            <Text
+              style={{ color: colors.textSecondary }}
+              className="font-poppins-regular text-xs mt-1 text-center"
+            >
+              All health and environmental vitals are within safe thresholds.
             </Text>
           </View>
         ) : (
-          /* Simple, Clean Alert Cards without any dots */
+          /* Clean Alert Cards with Read/Unread State & Dismiss Action */
           <View className="space-y-2.5">
             {alerts.map((alert) => {
               const isCritical = alert.severity === "critical";
               const isWarning = alert.severity === "warning";
 
               const iconBg = isCritical
-                ? "bg-red-50"
+                ? "bg-red-50 dark:bg-red-950/40"
                 : isWarning
-                ? "bg-amber-50"
-                : "bg-blue-50";
+                ? "bg-amber-50 dark:bg-amber-950/40"
+                : "bg-blue-50 dark:bg-blue-950/40";
 
               return (
                 <TouchableOpacity
                   key={alert.id}
-                  activeOpacity={0.7}
+                  activeOpacity={0.8}
                   onPress={() => handlePressAlert(alert.id)}
-                  className={`bg-white rounded-2xl p-3.5 border ${alert.isRead ? "border-[#EDE9E2] opacity-70" : "border-[#D6D2C4]"} mb-2.5 flex-row items-center justify-between shadow-xs`}
+                  style={{
+                    backgroundColor: colors.cardBg,
+                    borderColor: alert.isRead ? colors.cardBorder : isDark ? "#4B5563" : "#D6D2C4",
+                  }}
+                  className={`rounded-2xl p-3.5 border ${
+                    alert.isRead ? "opacity-75" : ""
+                  } mb-2.5 flex-row items-center justify-between shadow-xs`}
                 >
                   {/* Left: Icon & Text */}
-                  <View className="flex-row items-center flex-1 mr-3">
+                  <View className="flex-row items-center flex-1 mr-2">
                     <View
                       className={`w-10 h-10 rounded-full ${iconBg} items-center justify-center mr-3`}
                     >
@@ -198,20 +273,53 @@ export default function AlertsScreen() {
                     </View>
 
                     <View className="flex-1">
-                      <Text className="font-poppins-medium text-sm text-[#161616]">
-                        {alert.title}
-                      </Text>
-                      <Text className="font-poppins-regular text-xs text-[#6B7280] mt-0.5">
+                      <View className="flex-row items-center">
+                        <Text
+                          style={{ color: colors.textPrimary }}
+                          className="font-poppins-semibold text-sm"
+                        >
+                          {alert.title}
+                        </Text>
+                        {!alert.isRead && (
+                          <View className="w-1.5 h-1.5 rounded-full bg-rose-500 ml-1.5" />
+                        )}
+                      </View>
+                      <Text
+                        style={{ color: colors.textSecondary }}
+                        className="font-poppins-regular text-xs mt-0.5"
+                      >
                         {alert.message}
                       </Text>
                     </View>
                   </View>
 
-                  {/* Right: Timestamp only (No dots) */}
-                  <View className="items-end justify-center pl-1">
-                    <Text className="font-poppins-regular text-[11px] text-[#9E9B94]">
+                  {/* Right: Timestamp & Dismiss Button */}
+                  <View className="items-end justify-center pl-2">
+                    <Text
+                      style={{ color: colors.textMuted }}
+                      className="font-poppins-regular text-[11px] mb-1"
+                    >
                       {alert.timestamp}
                     </Text>
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        void handleDeleteAlert(alert.id);
+                      }}
+                      style={{
+                        backgroundColor: colors.backgroundSecondary,
+                        borderColor: colors.cardBorder,
+                      }}
+                      className="px-2 py-0.5 rounded-md border"
+                    >
+                      <Text
+                        style={{ color: colors.textSecondary }}
+                        className="font-poppins-medium text-[10px]"
+                      >
+                        Dismiss
+                      </Text>
+                    </TouchableOpacity>
                   </View>
                 </TouchableOpacity>
               );
