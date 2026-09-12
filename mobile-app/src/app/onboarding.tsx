@@ -184,8 +184,18 @@ export default function OnboardingScreen() {
             </View>
           </TouchableOpacity>
 
-          <Text className="font-poppins-medium text-[13px] text-[#4A6455] text-center mt-4 tracking-tight">
-            A Safer, Healthier Tomorrow
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => router.replace("/(tabs)")}
+            className="w-full py-4 px-6 mt-3 border border-[#214332]/25 bg-[#F0F5F2] rounded-full flex-row items-center justify-center shadow-sm"
+          >
+            <Text className="font-poppins-semibold text-[#214332] text-[15px] tracking-wide">
+              Continue Offline (BLE Direct) ›
+            </Text>
+          </TouchableOpacity>
+
+          <Text className="font-poppins-medium text-[13px] text-[#4A6455] text-center mt-3 tracking-tight">
+            A Safer, Healthier Tomorrow • 100% Offline Ready
           </Text>
         </View>
       </View>

@@ -224,6 +224,17 @@ export default function SignInScreen() {
               </>
             )}
           </TouchableOpacity>
+
+          {/* Continue Offline (BLE Direct) */}
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => router.replace("/(tabs)")}
+            className="w-full py-3.5 px-6 -mt-2 mb-5 border border-[#214332]/20 bg-[#F4F7F5] rounded-full flex-row items-center justify-center"
+          >
+            <Text className="font-poppins-semibold text-[#214332] text-[14px]">
+              Continue Offline (BLE Direct) ›
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Divider */}

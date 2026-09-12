@@ -47,9 +47,6 @@ export default function HomeScreen() {
   const dayNumber = now.getDate();
   const dayName = now.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase();
 
-  if (!isLoaded || !isSignedIn) {
-    return null;
-  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
