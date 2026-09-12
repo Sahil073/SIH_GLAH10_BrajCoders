@@ -1,40 +1,112 @@
 # =============================================================================
-# .gitignore — Hardware (ESP32 Arduino + KiCad)
-# Project: SIH GLAH10 BrajCoders
+# Sanjeevni Workspace .gitignore
+# Smart India Hackathon — Wearable Health & Telemetry System
 # =============================================================================
 
-# =============================================================================
-# ARDUINO IDE
-# =============================================================================
+# -----------------------------------------------------------------------------
+# 1. SENSITIVE CREDENTIALS, SECRETS & KEYS
+# -----------------------------------------------------------------------------
+.env
+.env.*
+*.env
+!.env.example
+*.pem
+*.key
+*.keystore
+*.jks
+*.p8
+*.p12
+*.mobileprovision
+.secret*
+credentials.json
+google-services.json
+GoogleService-Info.plist
 
-# Arduino IDE build output (compiled binaries, object files, hex files)
+# -----------------------------------------------------------------------------
+# 2. VOLATILE LOCAL DATABASES & STORAGE
+# -----------------------------------------------------------------------------
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+sanjeevni.db
+local_storage/
+
+# -----------------------------------------------------------------------------
+# 3. SHELL & COMMAND HISTORY
+# -----------------------------------------------------------------------------
+*.history
+.bash_history
+.zsh_history
+.node_repl_history
+
+# -----------------------------------------------------------------------------
+# 4. DEPENDENCIES
+# -----------------------------------------------------------------------------
+node_modules/
+**/node_modules/
+.pnpm-store/
+
+# -----------------------------------------------------------------------------
+# 5. EXPO, REACT NATIVE & MOBILE BUILDS
+# -----------------------------------------------------------------------------
+.expo/
+**/.expo/
+dist/
+web-build/
+expo-env.d.ts
+.metro-cache/
+.metro-health-check*
+.eas/
+*.apk
+*.aab
+*.ipa
+.kotlin/
+*.orig.*
+
+# Native prebuild directories (managed dynamically via Expo Prebuild)
+mobile-app/android/
+mobile-app/ios/
+**/android/build/
+**/ios/build/
+
+# -----------------------------------------------------------------------------
+# 6. LOGS, DIAGNOSTICS & TEST COVERAGE
+# -----------------------------------------------------------------------------
+*.log
+*.log.*
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+pnpm-debug.*
+coverage/
+.nyc_output/
+
+# -----------------------------------------------------------------------------
+# 7. TYPESCRIPT & LINTER CACHES
+# -----------------------------------------------------------------------------
+*.tsbuildinfo
+.eslintcache
+
+# -----------------------------------------------------------------------------
+# 8. HARDWARE / EMBEDDED BUILD ARTIFACTS (ESP32 Arduino)
+# -----------------------------------------------------------------------------
 build/
 **/build/
 *.elf
 *.bin
 *.hex
 *.map
-
-# Arduino IDE 2.x cache and workspace metadata
-.arduino15/
-**/.arduino15/
-.vscode/
-**/.vscode/
-
-# Compiled object files generated during build
 *.o
 *.a
-
-# Arduino IDE 1.x temp files
 *.bak
 *.tmp
+.arduino15/
+**/.arduino15/
 
-
-# =============================================================================
-# KICAD PCB DESIGN
-# =============================================================================
-
-# KiCad auto-save and backup files
+# KiCad PCB Design Backups & Locks (Design sources in Sanjeevni_PCB preserved)
 *.kicad_pcb-bak
 *.kicad_sch-bak
 *.sch-bak
@@ -42,67 +114,38 @@ build/
 *-bak.kicad_sch
 **/*-backups/
 *_autosave-*
-
-# KiCad project lock files (created when project is open)
 *.lck
 *.kicad_prl
-
-# KiCad symbol and footprint cache
 sym-lib-table
 fp-lib-table
 *.kicad_mod.bak
-
-# KiCad Gerber output (generated files — not source)
-Gerbers/
-gerbers/
-*.gbr
-*.gtl
-*.gbl
-*.gts
-*.gbs
-*.gto
-*.gbo
-*.gtp
-*.gbp
-*.gko
-*.gm1
-*.drl
-*.drl.rep
-*.drl.rpt
-*.pos
-*.cpl
-BOM/
-bom/
-
-# KiCad 3D render temporary files
 *.wrl
-
-# KiCad netlist exports (regenerated from schematic)
 *.net
-
-
-# =============================================================================
-# FRITZING
-# =============================================================================
-
-# Fritzing backup files
-*.fzb
+*.easyeda.bak
 *.fzbz
 *.fzpz.bak
 
+# -----------------------------------------------------------------------------
+# 9. IDE, EDITORS & ASSISTANT METADATA
+# -----------------------------------------------------------------------------
+.vscode/
+**/.vscode/
+.idea/
+**/.idea/
+.claude/
+**/.claude/
+.agents/
+**/.agents/
+*.code-workspace
+*.iml
+*.swp
+*.swo
+*~
+\#*\#
 
-# =============================================================================
-# EASYEDA
-# =============================================================================
-
-# EasyEDA exported JSON backups
-*.easyeda.bak
-
-
-# =============================================================================
-# OPERATING SYSTEM
-# =============================================================================
-
+# -----------------------------------------------------------------------------
+# 10. OPERATING SYSTEM ARTIFACTS
+# -----------------------------------------------------------------------------
 # Windows
 Thumbs.db
 Thumbs.db:encryptable
@@ -120,35 +163,4 @@ $RECYCLE.BIN/
 .Trashes
 
 # Linux
-*~
 .nfs*
-
-
-# =============================================================================
-# EDITORS
-# =============================================================================
-
-# VS Code (if used alongside Arduino IDE 2)
-.vscode/
-*.code-workspace
-
-# JetBrains (CLion etc.)
-.idea/
-*.iml
-
-# Vim / Emacs swap files
-*.swp
-*.swo
-*~
-\#*\#
-
-
-# =============================================================================
-# LOGS AND TEMP FILES
-# =============================================================================
-
-*.log
-*.log.*
-*.temp
-*.cache
-
