@@ -474,7 +474,16 @@ export class FalseAlarmGate {
     // We must not interpret missing baseline data as zero deviation.
     // -----------------------------------------------------------------------
 
+    // Categories without personal baseline metrics (fall, respiratory)
+    // bypass the baseline deviation gate.
     if (
+      input.category === "fall" ||
+      input.category === "respiratory"
+    ) {
+      evidence.push(
+        `${input.category}: acute event / environmental metric (personal baseline not applicable)`,
+      );
+    } else if (
       input.baselineDeviation ===
       undefined ||
       !Number.isFinite(
@@ -495,39 +504,39 @@ export class FalseAlarmGate {
           "Alert blocked until a valid baseline deviation is available",
         ],
       };
-    }
+    } else {
+      const baselineDeviation =
+        Math.abs(
+          input.baselineDeviation,
+        );
 
-    const baselineDeviation =
-      Math.abs(
-        input.baselineDeviation,
+      evidence.push(
+        `Baseline deviation: ${input.baselineDeviation.toFixed(2)}`,
       );
 
-    evidence.push(
-      `Baseline deviation: ${input.baselineDeviation.toFixed(2)}`,
-    );
+      if (
+        baselineDeviation <
+        this.minimumBaselineDeviation
+      ) {
+        this.resetPersistence(
+          input.category,
+        );
 
-    if (
-      baselineDeviation <
-      this.minimumBaselineDeviation
-    ) {
-      this.resetPersistence(
-        input.category,
+        return {
+          shouldAlert: false,
+          suppressedReason:
+            "LOW_CONFIDENCE",
+          evidence: [
+            ...evidence,
+            `Baseline deviation ${baselineDeviation.toFixed(2)} is below required ${this.minimumBaselineDeviation.toFixed(2)}`,
+          ],
+        };
+      }
+
+      evidence.push(
+        "Personal baseline deviation passed",
       );
-
-      return {
-        shouldAlert: false,
-        suppressedReason:
-          "LOW_CONFIDENCE",
-        evidence: [
-          ...evidence,
-          `Baseline deviation ${baselineDeviation.toFixed(2)} is below required ${this.minimumBaselineDeviation.toFixed(2)}`,
-        ],
-      };
     }
-
-    evidence.push(
-      "Personal baseline deviation passed",
-    );
 
     // -----------------------------------------------------------------------
     // 5. TEMPORAL PERSISTENCE

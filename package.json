@@ -1,0 +1,29 @@
+{
+  "name": "sanjeevni-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sanjeevni — Smart Offline Wearable Health Companion (SIH)",
+  "scripts": {
+    "start": "npm --prefix mobile-app start",
+    "android": "npm --prefix mobile-app run android",
+    "ios": "npm --prefix mobile-app run ios",
+    "web": "npm --prefix mobile-app run web",
+    "typecheck": "npm --prefix mobile-app run typecheck",
+    "test:ai": "npx --yes tsx mobile-app/ai-engine/__tests__/aiPipeline.test.ts",
+    "test:db": "npx --yes tsx mobile-app/databaseConnections/__tests__/databaseSchema.test.ts",
+    "test:e2e": "npx --yes tsx mobile-app/__tests__/endToEndIntegration.test.ts",
+    "test": "npm run test:ai && npm run test:db && npm run test:e2e"
+  },
+  "keywords": [
+    "wearable",
+    "health-monitoring",
+    "esp32",
+    "ble",
+    "pan-tompkins",
+    "react-native",
+    "expo",
+    "sqlite"
+  ],
+  "license": "MIT"
+}
+
