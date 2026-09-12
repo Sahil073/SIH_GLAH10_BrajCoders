@@ -17,6 +17,7 @@ import { useRouter } from "expo-router";
 import { useUserProfile, GenderType, BloodGroupType } from "@/store/userProfileStore";
 import { useBle } from "@/ble";
 import { useTheme } from "@/store/themeStore";
+import { RawDataRecorderCard } from "@/components/common/RawDataRecorderCard";
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -429,6 +430,9 @@ export default function ProfileScreen() {
             </Text>
           </TouchableOpacity>
         </View>
+
+        {/* Raw Telemetry CSV Logger for Clinical / Research Ground Truth */}
+        <RawDataRecorderCard />
 
         {/* Health Profile Card: Dedicated Biometrics */}
         <View

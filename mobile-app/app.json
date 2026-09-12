@@ -54,11 +54,15 @@
         "react-native-ble-plx",
         {
           "isBackgroundEnabled": false,
-          "modes": ["peripheral", "central"],
+          "modes": [
+            "peripheral",
+            "central"
+          ],
           "bluetoothAlwaysPermission": "Allow Sanjeevni to connect to ESP32 BLE health sensors"
         }
       ],
-      "./plugins/withReactNativeArchitectures"
+      "./plugins/withReactNativeArchitectures",
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true,
