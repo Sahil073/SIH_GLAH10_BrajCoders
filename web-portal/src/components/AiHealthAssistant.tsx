@@ -14,6 +14,7 @@ import {
   Wind,
   ShieldCheck,
   RefreshCw,
+  Usb,
 } from "lucide-react";
 import { ChatMessage, LiveVitals, UserProfile } from "../types/telemetry";
 
@@ -30,7 +31,7 @@ export const AiHealthAssistant: React.FC<AiHealthAssistantProps> = ({
     {
       id: "welcome-msg",
       sender: "assistant",
-      text: `Hello! I am your Sanjeevni On-Device Health Companion. I am continuously monitoring your 500 Hz ECG, 3-axis motion, and environmental disaster sensors. All inference runs strictly on your localhost with zero cloud data transmission. How can I assist you right now?`,
+      text: `Hello! I am your Sanjeevni On-Device Health Companion.\n\n⚠️ **Hardware Status**: Your ESP32 sensor unit is currently disconnected. Please connect the USB cable to your laptop and click **"Connect ESP32 (USB)"** to begin live biometrics streaming.\n\nAll AI reasoning runs strictly on your localhost without sending any data to the cloud.`,
       timestamp: Date.now(),
     },
   ]);
@@ -52,9 +53,20 @@ export const AiHealthAssistant: React.FC<AiHealthAssistantProps> = ({
    */
   const generateAIResponse = (query: string): string => {
     const q = query.toLowerCase();
+
+    if (!vitals.isConnected) {
+      if (q.includes("connect") || q.includes("usb") || q.includes("port") || q.includes("setup")) {
+        return `To connect your Sanjeevni ESP32 Wearable:\n1. Plug your ESP32 into your laptop using a micro-USB / USB-C data cable.\n2. Ensure \`Hardware/ESP32_Sensor_Hub_USB/ESP32_Sensor_Hub_USB.ino\` has been flashed via the Arduino IDE.\n3. Click the purple **"Connect ESP32 (USB)"** button in the top navbar.\n4. Select your COM port from the browser prompt (Baud: 115200).\n\nOnce connected, all live waveforms and disaster alerts will begin streaming immediately!`;
+      }
+      return `⚠️ **Device Not Connected**: I cannot analyze your live health metrics yet because the ESP32 USB connection is not established. Please connect your ESP32 hardware via USB (115200 baud) or click **"Connect ESP32 (USB)"** above to start receiving live biometrics.`;
+    }
+
     const { heartRate, rrIntervalMs, hrvRmssd, heatIndexC, calculatedAqi, aqiCategory, moisturePercent, motion } = vitals;
 
     if (q.includes("ecg") || q.includes("heart") || q.includes("bpm") || q.includes("rhythm")) {
+      if (heartRate === null) {
+        return "Waiting for first BioAmp EXG telemetry packet from USB...";
+      }
       return `Your real-time heart rate is **${heartRate} BPM** with an average R-R interval of **${rrIntervalMs} ms** and HRV RMSSD of **${hrvRmssd} ms** (Signal Quality: ${vitals.sqi.label}). \n\n${
         heartRate > 100 && motion.activity === "REST"
           ? "⚠️ Warning: Your heart rate is elevated during bodily rest. This may suggest thermal strain, stress, or cardiac tachycardia. Consider resting in a cool area and hydrating."
@@ -63,6 +75,9 @@ export const AiHealthAssistant: React.FC<AiHealthAssistantProps> = ({
     }
 
     if (q.includes("heat") || q.includes("hot") || q.includes("stroke") || q.includes("temperature")) {
+      if (heatIndexC === null) {
+        return "Waiting for first DHT11 temperature/humidity packet from USB...";
+      }
       return `Current ambient conditions indicate a Rothfusz Heat Index of **${heatIndexC}°C** (Ambient: ${vitals.temperatureC}°C, Humidity: ${vitals.humidityPct}%). \n\n${
         heatIndexC >= 42
           ? "🚨 Critical Heat Stroke Risk: Ambient heat exchange is severely impeded by high humidity. Take immediate shelter in ventilated shade, drink cold water with electrolytes (ORS), and avoid all strenuous manual work."
@@ -73,7 +88,10 @@ export const AiHealthAssistant: React.FC<AiHealthAssistantProps> = ({
     }
 
     if (q.includes("aqi") || q.includes("air") || q.includes("pollution") || q.includes("smog") || q.includes("breathe")) {
-      return `Your garment collar MQ135 sensor measures an estimated AQI of **${calculatedAqi} (${aqiCategory})**. \n\n${
+      if (calculatedAqi === null) {
+        return "Waiting for first MQ135 air quality packet from USB...";
+      }
+      return `Your garment collar MQ135 sensor measures an estimated AQI of **${calculatedAqi} (${aqiCategory || "Evaluating"})**. \n\n${
         calculatedAqi > 200
           ? "🚨 Hazardous Airborne Pollutants: Particulate matter and toxic gas concentrations are high. Please wear a tight-fitting N95 respirator mask and minimize outdoor exertion."
           : "✓ Airborne pollutant concentrations are currently within acceptable national standards."
@@ -85,11 +103,14 @@ export const AiHealthAssistant: React.FC<AiHealthAssistantProps> = ({
     }
 
     if (q.includes("hydration") || q.includes("water") || q.includes("drink")) {
-      const recLiters = heatIndexC > 38 ? 4.0 : 2.5;
-      return `Based on your profile as a **${userProfile.profileType.replace("_", " ")}** and current Heat Index of **${heatIndexC}°C**, your recommended hydration target is **${recLiters} Liters** today. Ensure you replenish sodium and potassium electrolytes, not just plain water, to avoid hyponatremia.`;
+      const recLiters = heatIndexC !== null && heatIndexC > 38 ? 4.0 : 2.5;
+      return `Based on your profile as a **${userProfile.profileType.replace("_", " ")}** and current Heat Index of **${heatIndexC !== null ? `${heatIndexC}°C` : "ambient"}**, your recommended hydration target is **${recLiters} Liters** today. Ensure you replenish sodium and potassium electrolytes, not just plain water, to avoid hyponatremia.`;
     }
 
     if (q.includes("flood") || q.includes("water") || q.includes("damp")) {
+      if (moisturePercent === null) {
+        return "Waiting for first moisture sensor packet from USB...";
+      }
       return `Your textile moisture sensor reports **${moisturePercent}% saturation**. \n\n${
         moisturePercent > 65
           ? "⚠️ High Garment Dampness: Prolonged skin contact with contaminated floodwaters poses high risks of Leptospirosis, fungal dermatitis, and trench foot. Disinfect skin and swap garments as soon as dry clothing is accessible."
@@ -98,7 +119,7 @@ export const AiHealthAssistant: React.FC<AiHealthAssistantProps> = ({
     }
 
     // Default general response
-    return `Sanjeevni Status Summary:\n• Cardiac: **${heartRate} BPM** (HRV: ${hrvRmssd}ms)\n• Heat Index: **${heatIndexC}°C**\n• Air Quality: **${calculatedAqi} AQI**\n• Posture: **${motion.activity}**\n\nAll parameters are being evaluated by on-device edge filters without relying on external cloud APIs. Feel free to ask about specific disaster precautions or vital interpretations.`;
+    return `Sanjeevni Status Summary:\n• Hardware: **Connected (USB)**\n• Cardiac: **${heartRate ?? "--"} BPM** (HRV: ${hrvRmssd ?? "--"}ms)\n• Heat Index: **${heatIndexC ?? "--"}°C**\n• Air Quality: **${calculatedAqi ?? "--"} AQI**\n• Posture: **${motion.activity}**\n\nAll parameters are being evaluated by on-device edge filters without relying on external cloud APIs.`;
   };
 
   const handleSend = (queryToSend?: string) => {
@@ -126,16 +147,22 @@ export const AiHealthAssistant: React.FC<AiHealthAssistantProps> = ({
       };
       setMessages((prev) => [...prev, assistantMsg]);
       setIsTyping(false);
-    }, 450);
+    }, 400);
   };
 
-  const quickChips = [
-    "Explain my ECG rhythm",
-    "Am I at risk of heat stroke?",
-    "Air quality & respiratory advice",
-    "Hydration plan for today",
-    "How does Fall Detection SOS work?",
-  ];
+  const quickChips = vitals.isConnected
+    ? [
+        "Explain my ECG rhythm",
+        "Am I at risk of heat stroke?",
+        "Air quality & respiratory advice",
+        "Hydration plan for today",
+        "How does Fall Detection SOS work?",
+      ]
+    : [
+        "How do I connect the USB hardware?",
+        "What sensors are supported?",
+        "How does the on-device AI work?",
+      ];
 
   return (
     <div className="glass-card rounded-3xl p-6 transition-all shadow-soft flex flex-col h-[520px]">
@@ -199,7 +226,7 @@ export const AiHealthAssistant: React.FC<AiHealthAssistantProps> = ({
 
         {isTyping && (
           <div className="flex items-center gap-2 text-xs font-semibold text-brand-600 pl-10">
-            <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Sanjeevni AI is analyzing live telemetry...
+            <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Sanjeevni AI is analyzing...
           </div>
         )}
         <div ref={messagesEndRef} />

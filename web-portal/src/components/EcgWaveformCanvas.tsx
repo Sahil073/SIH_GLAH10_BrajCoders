@@ -4,28 +4,32 @@
 // =============================================================================
 
 import React, { useEffect, useRef } from "react";
-import { Heart, Activity, ShieldCheck, AlertCircle, Info } from "lucide-react";
+import { Heart, ShieldCheck, AlertCircle, Info, Usb, PowerOff } from "lucide-react";
 import { SQILabel } from "../types/telemetry";
 
 interface EcgWaveformCanvasProps {
+  isConnected: boolean;
   ringBuffer: number[];
-  heartRate: number;
-  rrIntervalMs: number;
-  hrvRmssd: number;
-  hrvSdnn: number;
+  heartRate: number | null;
+  rrIntervalMs: number | null;
+  hrvRmssd: number | null;
+  hrvSdnn: number | null;
   sqi: {
     label: SQILabel;
     score: number;
   };
+  onConnectClick?: () => void;
 }
 
 export const EcgWaveformCanvas: React.FC<EcgWaveformCanvasProps> = ({
+  isConnected,
   ringBuffer,
   heartRate,
   rrIntervalMs,
   hrvRmssd,
   hrvSdnn,
   sqi,
+  onConnectClick,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -36,12 +40,13 @@ export const EcgWaveformCanvas: React.FC<EcgWaveformCanvasProps> = ({
     if (!ctx) return;
 
     let animationFrameId: number;
+    let sweepX = 0;
 
     const render = () => {
       const width = canvas.width;
       const height = canvas.height;
 
-      // 1. Clear background with subtle dark-violet clinical oscilloscope shade
+      // 1. Clear background
       ctx.fillStyle = "#120d24";
       ctx.fillRect(0, 0, width, height);
 
@@ -50,7 +55,7 @@ export const EcgWaveformCanvas: React.FC<EcgWaveformCanvasProps> = ({
       const smallGrid = 15;
       const largeGrid = 75;
 
-      // Fine grid (lavender-purple tint)
+      // Fine grid
       ctx.strokeStyle = "rgba(168, 85, 247, 0.10)";
       ctx.beginPath();
       for (let x = 0; x < width; x += smallGrid) {
@@ -63,7 +68,7 @@ export const EcgWaveformCanvas: React.FC<EcgWaveformCanvasProps> = ({
       }
       ctx.stroke();
 
-      // Major grid (soft pink-violet tint)
+      // Major grid
       ctx.strokeStyle = "rgba(236, 72, 153, 0.22)";
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -77,40 +82,56 @@ export const EcgWaveformCanvas: React.FC<EcgWaveformCanvasProps> = ({
       }
       ctx.stroke();
 
-      // 3. Draw ECG Signal Trace from ring buffer
-      const samples = ringBuffer;
-      const len = samples.length;
-      if (len > 0) {
-        ctx.lineWidth = 2.2;
-        // Glowing Neon Pink/Purple gradient trace
-        const gradient = ctx.createLinearGradient(0, 0, width, 0);
-        gradient.addColorStop(0, "#C084FC"); // Light purple
-        gradient.addColorStop(0.5, "#F472B6"); // Soft pink
-        gradient.addColorStop(1, "#EC4899"); // Vibrant rose
+      const centerY = height / 2;
 
-        ctx.strokeStyle = gradient;
-        ctx.shadowColor = "#EC4899";
-        ctx.shadowBlur = 8;
+      if (!isConnected) {
+        // Draw flat resting baseline with calm horizontal line
+        ctx.lineWidth = 1.8;
+        ctx.strokeStyle = "rgba(168, 85, 247, 0.35)";
         ctx.beginPath();
-
-        const step = width / (len - 1);
-        // Voltage scale: center 2048 to height/2
-        const centerY = height / 2;
-        const scaleY = (height / 2) / 1200; // calibrated scale
-
-        for (let i = 0; i < len; i++) {
-          const raw = samples[i] || 2048;
-          const y = centerY - (raw - 2048) * scaleY;
-          const x = i * step;
-
-          if (i === 0) {
-            ctx.moveTo(x, y);
-          } else {
-            ctx.lineTo(x, y);
-          }
-        }
+        ctx.moveTo(0, centerY);
+        ctx.lineTo(width, centerY);
         ctx.stroke();
-        ctx.shadowBlur = 0; // Reset shadow for next drawings
+
+        // Subtle moving scanner dot indicating standby
+        sweepX = (sweepX + 2) % width;
+        ctx.fillStyle = "#F472B6";
+        ctx.beginPath();
+        ctx.arc(sweepX, centerY, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        // 3. Draw Real ECG Signal Trace from ring buffer
+        const samples = ringBuffer;
+        const len = samples.length;
+        if (len > 0) {
+          ctx.lineWidth = 2.2;
+          const gradient = ctx.createLinearGradient(0, 0, width, 0);
+          gradient.addColorStop(0, "#C084FC");
+          gradient.addColorStop(0.5, "#F472B6");
+          gradient.addColorStop(1, "#EC4899");
+
+          ctx.strokeStyle = gradient;
+          ctx.shadowColor = "#EC4899";
+          ctx.shadowBlur = 8;
+          ctx.beginPath();
+
+          const step = width / (len - 1);
+          const scaleY = (height / 2) / 1200;
+
+          for (let i = 0; i < len; i++) {
+            const raw = samples[i] || 2048;
+            const y = centerY - (raw - 2048) * scaleY;
+            const x = i * step;
+
+            if (i === 0) {
+              ctx.moveTo(x, y);
+            } else {
+              ctx.lineTo(x, y);
+            }
+          }
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+        }
       }
 
       animationFrameId = requestAnimationFrame(render);
@@ -121,10 +142,13 @@ export const EcgWaveformCanvas: React.FC<EcgWaveformCanvasProps> = ({
     return () => {
       cancelAnimationFrame(animationFrameId);
     };
-  }, [ringBuffer]);
+  }, [ringBuffer, isConnected]);
 
   // SQI Badge styling
   const getSqiBadge = () => {
+    if (!isConnected) {
+      return { bg: "bg-slate-100 text-slate-600 border-slate-200", icon: PowerOff, text: "USB Disconnected" };
+    }
     switch (sqi.label) {
       case "EXCELLENT":
         return { bg: "bg-emerald-50 text-emerald-700 border-emerald-200", icon: ShieldCheck, text: "High SQI (95%)" };
@@ -134,8 +158,8 @@ export const EcgWaveformCanvas: React.FC<EcgWaveformCanvasProps> = ({
         return { bg: "bg-amber-50 text-amber-700 border-amber-200", icon: Info, text: "Usable SQI" };
       case "NOISY":
         return { bg: "bg-orange-50 text-orange-700 border-orange-200", icon: AlertCircle, text: "Motion Noise" };
-      case "INVALID":
-        return { bg: "bg-red-50 text-red-700 border-red-200", icon: AlertCircle, text: "Lead Disconnected" };
+      default:
+        return { bg: "bg-slate-100 text-slate-600 border-slate-200", icon: PowerOff, text: "No Signal" };
     }
   };
 
@@ -147,14 +171,26 @@ export const EcgWaveformCanvas: React.FC<EcgWaveformCanvasProps> = ({
       {/* Header bar */}
       <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-rosebud-500 to-brand-500 flex items-center justify-center text-white shadow-sm shadow-rosebud-500/30">
-            <Heart className="w-5 h-5 animate-pulse text-white" />
+          <div
+            className={`w-10 h-10 rounded-2xl flex items-center justify-center text-white shadow-sm ${
+              isConnected
+                ? "bg-gradient-to-tr from-rosebud-500 to-brand-500 shadow-rosebud-500/30"
+                : "bg-slate-400"
+            }`}
+          >
+            <Heart className={`w-5 h-5 ${isConnected ? "animate-pulse" : ""}`} />
           </div>
           <div>
             <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
               Live Cardiac Electrocardiogram (ECG)
-              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-rosebud-100 text-rosebud-700 border border-rosebud-200">
-                500 Hz Real-Time
+              <span
+                className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
+                  isConnected
+                    ? "bg-rosebud-100 text-rosebud-700 border-rosebud-200"
+                    : "bg-slate-100 text-slate-600 border-slate-200"
+                }`}
+              >
+                {isConnected ? "500 Hz Active" : "Waiting for USB"}
               </span>
             </h2>
             <p className="text-xs text-slate-500">
@@ -173,12 +209,12 @@ export const EcgWaveformCanvas: React.FC<EcgWaveformCanvasProps> = ({
 
           {/* HRV RMSSD */}
           <div className="px-3 py-1 rounded-full bg-brand-50 border border-brand-200 text-xs font-medium text-brand-700">
-            RMSSD: <span className="font-bold">{hrvRmssd} ms</span>
+            RMSSD: <span className="font-bold">{isConnected && hrvRmssd !== null ? `${hrvRmssd} ms` : "--"}</span>
           </div>
 
           {/* HRV SDNN */}
           <div className="px-3 py-1 rounded-full bg-brand-50 border border-brand-200 text-xs font-medium text-brand-700">
-            SDNN: <span className="font-bold">{hrvSdnn} ms</span>
+            SDNN: <span className="font-bold">{isConnected && hrvSdnn !== null ? `${hrvSdnn} ms` : "--"}</span>
           </div>
         </div>
       </div>
@@ -193,14 +229,14 @@ export const EcgWaveformCanvas: React.FC<EcgWaveformCanvasProps> = ({
         />
 
         {/* Floating Heart Rate HUD (Top-Right of Canvas) */}
-        <div className="absolute top-4 right-4 bg-slate-950/75 backdrop-blur-md border border-purple-500/30 rounded-2xl px-4 py-2.5 flex items-center gap-3 shadow-lg">
-          <div className="w-3 h-3 rounded-full bg-rosebud-500 animate-ping" />
+        <div className="absolute top-4 right-4 bg-slate-950/80 backdrop-blur-md border border-purple-500/30 rounded-2xl px-4 py-2.5 flex items-center gap-3 shadow-lg">
+          <div className={`w-3 h-3 rounded-full ${isConnected ? "bg-rosebud-500 animate-ping" : "bg-slate-600"}`} />
           <div>
             <div className="text-[10px] tracking-wider uppercase font-semibold text-rosebud-300">
               Heart Rate
             </div>
             <div className="text-3xl font-extrabold text-white tracking-tight flex items-baseline gap-1">
-              {heartRate}
+              {isConnected && heartRate !== null ? heartRate : "--"}
               <span className="text-xs font-medium text-slate-400">BPM</span>
             </div>
           </div>
@@ -209,10 +245,34 @@ export const EcgWaveformCanvas: React.FC<EcgWaveformCanvasProps> = ({
               R-R Interval
             </div>
             <div className="text-sm font-bold text-slate-200">
-              {rrIntervalMs} <span className="text-[10px] font-normal text-slate-400">ms</span>
+              {isConnected && rrIntervalMs !== null ? rrIntervalMs : "--"} <span className="text-[10px] font-normal text-slate-400">ms</span>
             </div>
           </div>
         </div>
+
+        {/* Center Overlay when USB is not connected */}
+        {!isConnected && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center p-6 bg-slate-950/60 backdrop-blur-[2px] text-center">
+            <div className="w-12 h-12 rounded-2xl bg-purple-950/90 border border-purple-500/40 flex items-center justify-center text-purple-300 mb-3 shadow-glow">
+              <Usb className="w-6 h-6 animate-pulse" />
+            </div>
+            <h3 className="text-sm sm:text-base font-bold text-white tracking-tight">
+              Hardware Stream Standby
+            </h3>
+            <p className="text-xs text-purple-200/80 max-w-sm mt-1 mb-4">
+              Please connect your ESP32 Sensor Hub via USB cable (Baud: 115200) to begin live 500 Hz ECG oscilloscope streaming.
+            </p>
+            {onConnectClick && (
+              <button
+                onClick={onConnectClick}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-brand-600 to-rosebud-500 hover:opacity-95 text-white text-xs font-bold shadow-md transition-all flex items-center gap-1.5"
+              >
+                <Usb className="w-4 h-4" />
+                Connect ESP32 (USB)
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Lead & Calibration info footer on canvas */}
         <div className="absolute bottom-2 left-4 flex items-center gap-4 text-[10px] font-mono text-purple-300/70">

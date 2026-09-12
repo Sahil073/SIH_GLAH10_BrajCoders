@@ -1,6 +1,6 @@
 // =============================================================================
 // src/components/VitalsGrid.tsx
-// High-Level Overview Grid for Multi-Sensor Telemetry
+// High-Level Overview Grid for Multi-Sensor Telemetry (Real-Data Strict)
 // =============================================================================
 
 import React from "react";
@@ -11,7 +11,6 @@ import {
   Flame,
   Wind,
   Droplets,
-  Activity,
 } from "lucide-react";
 import { LiveVitals } from "../types/telemetry";
 
@@ -21,6 +20,7 @@ interface VitalsGridProps {
 
 export const VitalsGrid: React.FC<VitalsGridProps> = ({ vitals }) => {
   const {
+    isConnected,
     heartRate,
     hrvRmssd,
     temperatureC,
@@ -34,63 +34,104 @@ export const VitalsGrid: React.FC<VitalsGridProps> = ({ vitals }) => {
   const cards = [
     {
       title: "Heart Rhythm",
-      value: `${heartRate}`,
+      value: isConnected && heartRate !== null ? `${heartRate}` : "--",
       unit: "BPM",
-      subtitle: `HRV RMSSD: ${hrvRmssd} ms`,
+      subtitle: isConnected && hrvRmssd !== null ? `HRV RMSSD: ${hrvRmssd} ms` : "Awaiting BioAmp EXG",
       icon: Heart,
       gradient: "from-rosebud-500 to-pink-400",
-      status: heartRate > 100 ? "Elevated" : "Normal",
-      statusColor: heartRate > 100 ? "text-red-600 bg-red-50 border-red-200" : "text-emerald-700 bg-emerald-50 border-emerald-200",
+      status: !isConnected || heartRate === null ? "Offline" : heartRate > 100 ? "Elevated" : "Normal",
+      statusColor:
+        !isConnected || heartRate === null
+          ? "text-slate-500 bg-slate-100 border-slate-200"
+          : heartRate > 100
+          ? "text-red-600 bg-red-50 border-red-200"
+          : "text-emerald-700 bg-emerald-50 border-emerald-200",
     },
     {
       title: "Ambient Temp",
-      value: `${temperatureC}`,
+      value: isConnected && temperatureC !== null ? `${temperatureC}` : "--",
       unit: "°C",
-      subtitle: `DHT11 on-garment`,
+      subtitle: isConnected && temperatureC !== null ? "DHT11 on-garment" : "Awaiting DHT11",
       icon: Thermometer,
       gradient: "from-amber-500 to-orange-400",
-      status: temperatureC > 38 ? "Hot" : "Normal",
-      statusColor: temperatureC > 38 ? "text-orange-700 bg-orange-50 border-orange-200" : "text-emerald-700 bg-emerald-50 border-emerald-200",
+      status: !isConnected || temperatureC === null ? "Offline" : temperatureC > 38 ? "Hot" : "Normal",
+      statusColor:
+        !isConnected || temperatureC === null
+          ? "text-slate-500 bg-slate-100 border-slate-200"
+          : temperatureC > 38
+          ? "text-orange-700 bg-orange-50 border-orange-200"
+          : "text-emerald-700 bg-emerald-50 border-emerald-200",
     },
     {
       title: "Air Humidity",
-      value: `${humidityPct}`,
+      value: isConnected && humidityPct !== null ? `${humidityPct}` : "--",
       unit: "%",
-      subtitle: `Relative moisture`,
+      subtitle: isConnected && humidityPct !== null ? "Relative moisture" : "Awaiting DHT11",
       icon: CloudRain,
       gradient: "from-blue-500 to-cyan-400",
-      status: humidityPct > 70 ? "Humid" : "Optimal",
-      statusColor: humidityPct > 70 ? "text-blue-700 bg-blue-50 border-blue-200" : "text-emerald-700 bg-emerald-50 border-emerald-200",
+      status: !isConnected || humidityPct === null ? "Offline" : humidityPct > 70 ? "Humid" : "Optimal",
+      statusColor:
+        !isConnected || humidityPct === null
+          ? "text-slate-500 bg-slate-100 border-slate-200"
+          : humidityPct > 70
+          ? "text-blue-700 bg-blue-50 border-blue-200"
+          : "text-emerald-700 bg-emerald-50 border-emerald-200",
     },
     {
       title: "Heat Index",
-      value: `${heatIndexC}`,
+      value: isConnected && heatIndexC !== null ? `${heatIndexC}` : "--",
       unit: "°C",
-      subtitle: `Feels-like thermal stress`,
+      subtitle: isConnected && heatIndexC !== null ? "Feels-like thermal stress" : "Awaiting data",
       icon: Flame,
       gradient: "from-orange-500 to-rosebud-500",
-      status: heatIndexC > 40 ? "Danger" : heatIndexC > 33 ? "Caution" : "Safe",
-      statusColor: heatIndexC > 40 ? "text-red-700 bg-red-50 border-red-200" : heatIndexC > 33 ? "text-amber-700 bg-amber-50 border-amber-200" : "text-emerald-700 bg-emerald-50 border-emerald-200",
+      status:
+        !isConnected || heatIndexC === null
+          ? "Offline"
+          : heatIndexC > 40
+          ? "Danger"
+          : heatIndexC > 33
+          ? "Caution"
+          : "Safe",
+      statusColor:
+        !isConnected || heatIndexC === null
+          ? "text-slate-500 bg-slate-100 border-slate-200"
+          : heatIndexC > 40
+          ? "text-red-700 bg-red-50 border-red-200"
+          : heatIndexC > 33
+          ? "text-amber-700 bg-amber-50 border-amber-200"
+          : "text-emerald-700 bg-emerald-50 border-emerald-200",
     },
     {
       title: "Air Quality (AQI)",
-      value: `${calculatedAqi}`,
+      value: isConnected && calculatedAqi !== null ? `${calculatedAqi}` : "--",
       unit: "/ 500",
-      subtitle: `CPCB: ${aqiCategory}`,
+      subtitle: isConnected && aqiCategory !== null ? `CPCB: ${aqiCategory}` : "Awaiting MQ135",
       icon: Wind,
       gradient: "from-brand-600 to-indigo-500",
-      status: aqiCategory,
-      statusColor: calculatedAqi > 200 ? "text-red-700 bg-red-50 border-red-200" : calculatedAqi > 100 ? "text-amber-700 bg-amber-50 border-amber-200" : "text-emerald-700 bg-emerald-50 border-emerald-200",
+      status: !isConnected || calculatedAqi === null ? "Offline" : aqiCategory || "Evaluating",
+      statusColor:
+        !isConnected || calculatedAqi === null
+          ? "text-slate-500 bg-slate-100 border-slate-200"
+          : calculatedAqi > 200
+          ? "text-red-700 bg-red-50 border-red-200"
+          : calculatedAqi > 100
+          ? "text-amber-700 bg-amber-50 border-amber-200"
+          : "text-emerald-700 bg-emerald-50 border-emerald-200",
     },
     {
       title: "Garment Moisture",
-      value: `${moisturePercent}`,
+      value: isConnected && moisturePercent !== null ? `${moisturePercent}` : "--",
       unit: "%",
-      subtitle: `Fabric hydration`,
+      subtitle: isConnected && moisturePercent !== null ? "Fabric saturation" : "Awaiting Probe",
       icon: Droplets,
       gradient: "from-cyan-500 to-blue-500",
-      status: moisturePercent > 70 ? "Immersed" : "Dry",
-      statusColor: moisturePercent > 70 ? "text-blue-700 bg-blue-50 border-blue-200" : "text-emerald-700 bg-emerald-50 border-emerald-200",
+      status: !isConnected || moisturePercent === null ? "Offline" : moisturePercent > 70 ? "Immersed" : "Dry",
+      statusColor:
+        !isConnected || moisturePercent === null
+          ? "text-slate-500 bg-slate-100 border-slate-200"
+          : moisturePercent > 70
+          ? "text-blue-700 bg-blue-50 border-blue-200"
+          : "text-emerald-700 bg-emerald-50 border-emerald-200",
     },
   ];
 
@@ -104,7 +145,11 @@ export const VitalsGrid: React.FC<VitalsGridProps> = ({ vitals }) => {
             className="glass-card glass-card-hover rounded-3xl p-4 flex flex-col justify-between"
           >
             <div className="flex items-center justify-between gap-1 mb-2">
-              <div className={`w-8 h-8 rounded-xl bg-gradient-to-tr ${card.gradient} flex items-center justify-center text-white shadow-xs`}>
+              <div
+                className={`w-8 h-8 rounded-xl bg-gradient-to-tr ${card.gradient} flex items-center justify-center text-white shadow-xs opacity-${
+                  isConnected ? "100" : "60"
+                }`}
+              >
                 <Icon className="w-4 h-4" />
               </div>
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${card.statusColor}`}>

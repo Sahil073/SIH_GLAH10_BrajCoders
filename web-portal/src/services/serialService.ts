@@ -118,3 +118,4 @@ export class SerialService {
 }
 
 export const serialService = new SerialService();
+

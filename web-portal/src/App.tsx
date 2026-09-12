@@ -6,6 +6,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Navbar } from "./components/Navbar";
+import { UsbConnectionPrompt } from "./components/UsbConnectionPrompt";
 import { VitalsGrid } from "./components/VitalsGrid";
 import { EcgWaveformCanvas } from "./components/EcgWaveformCanvas";
 import { MotionMonitor } from "./components/MotionMonitor";
@@ -15,7 +16,6 @@ import { PersonalWellnessCard } from "./components/PersonalWellnessCard";
 import { EmergencySosModal } from "./components/EmergencySosModal";
 
 import { serialService, SerialConnectionState } from "./services/serialService";
-import { simulatorService, DisasterScenario } from "./services/simulatorService";
 import { EcgProcessor } from "./ai/ecgProcessor";
 import { MotionProcessor } from "./ai/motionProcessor";
 import { EnvironmentProcessor } from "./ai/environmentProcessor";
@@ -40,14 +40,12 @@ export const App: React.FC = () => {
   // ── 2. State Management ──────────────────────────────────────────────────
   const [serialState, setSerialState] = useState<SerialConnectionState>("DISCONNECTED");
   const [serialMessage, setSerialMessage] = useState<string>("");
-  const [isSimulatorOn, setIsSimulatorOn] = useState<boolean>(true); // Start in simulator mode so judges immediately see live vitals!
-  const [activeScenario, setActiveScenario] = useState<DisasterScenario>("NORMAL_REST");
 
   // User Profile
   const [userProfile, setUserProfile] = useState<UserProfile>({
     name: "Alamin Sheikh",
     age: 48,
-    profileType: "OUTDOOR_WORKER", // Default to outdoor worker highlighting heatwave relevance
+    profileType: "OUTDOOR_WORKER",
     restingHrBaseline: 72,
     dailyWaterIntakeLiters: 3.5,
     emergencyContact: {
@@ -57,55 +55,61 @@ export const App: React.FC = () => {
     },
   });
 
-  // Live Vitals
+  // Live Vitals — STRICTLY REAL DATA ONLY (null until real packets arrive)
   const [vitals, setVitals] = useState<LiveVitals>({
-    heartRate: 72,
-    rrIntervalMs: 833,
-    hrvRmssd: 38.5,
-    hrvSdnn: 44.0,
-    sqi: { label: "EXCELLENT", score: 0.95 },
-    temperatureC: 28.5,
-    humidityPct: 54.0,
-    heatIndexC: 30.2,
-    rawMq135: 750,
-    calculatedAqi: 45,
-    aqiCategory: "Good",
-    rawSoilMoisture: 2950,
-    moisturePercent: 12,
+    isConnected: false,
+    heartRate: null,
+    rrIntervalMs: null,
+    hrvRmssd: null,
+    hrvSdnn: null,
+    sqi: { label: "DISCONNECTED", score: 0 },
+    temperatureC: null,
+    humidityPct: null,
+    heatIndexC: null,
+    rawMq135: null,
+    calculatedAqi: null,
+    aqiCategory: null,
+    rawSoilMoisture: null,
+    moisturePercent: null,
     motion: {
-      x: 0.05,
-      y: 0.12,
-      z: 9.78,
-      magnitude: 9.78,
-      activity: "REST",
+      x: 0,
+      y: 0,
+      z: 0,
+      magnitude: 0,
+      activity: "IDLE",
       fallDetected: false,
       fallStage: "NONE",
       fallConfidence: 0.0,
     },
-    lastPacketTs: Date.now(),
+    lastPacketTs: null,
     packetsReceived: 0,
   });
 
   // Ring buffer of ECG samples for Canvas rendering
   const [ecgRingBuffer, setEcgRingBuffer] = useState<number[]>(() =>
-    ecgProcessorRef.current.getRingBuffer()
+    new Array(1500).fill(2048)
   );
 
   // Fusion & Alert State
   const [alerts, setAlerts] = useState<DisasterAlert[]>([]);
-  const [healthScore, setHealthScore] = useState<number>(94);
-  const [baselineDriftPct, setBaselineDriftPct] = useState<number>(0);
-  const [fatigueIndex, setFatigueIndex] = useState<number>(25);
+  const [healthScore, setHealthScore] = useState<number | null>(null);
+  const [baselineDriftPct, setBaselineDriftPct] = useState<number | null>(null);
+  const [fatigueIndex, setFatigueIndex] = useState<number | null>(null);
 
   // SOS Modal State
   const [sosModalOpen, setSosModalOpen] = useState<boolean>(false);
   const [sosReason, setSosReason] = useState<string>("Manual Emergency Broadcast");
 
-  // ── 3. Central Packet Dispatcher ─────────────────────────────────────────
+  // ── 3. Real Telemetry Packet Handler ──────────────────────────────────────
   const handleIncomingPacket = useCallback(
     (packet: RawSensorPacket) => {
       setVitals((prev) => {
-        const next: LiveVitals = { ...prev, lastPacketTs: Date.now(), packetsReceived: prev.packetsReceived + 1 };
+        const next: LiveVitals = {
+          ...prev,
+          isConnected: true,
+          lastPacketTs: Date.now(),
+          packetsReceived: prev.packetsReceived + 1,
+        };
 
         switch (packet.sensor) {
           case 1: {
@@ -153,8 +157,8 @@ export const App: React.FC = () => {
             const envRes = envProcessorRef.current.analyze(
               next.temperatureC,
               next.humidityPct,
-              next.rawMq135,
-              next.rawSoilMoisture
+              next.rawMq135 || 700,
+              next.rawSoilMoisture || 2800
             );
             next.heatIndexC = envRes.heatIndexC;
             break;
@@ -164,10 +168,10 @@ export const App: React.FC = () => {
             // MQ135 Air Quality Raw ADC
             next.rawMq135 = packet.data.raw;
             const envRes = envProcessorRef.current.analyze(
-              next.temperatureC,
-              next.humidityPct,
+              next.temperatureC || 27,
+              next.humidityPct || 50,
               next.rawMq135,
-              next.rawSoilMoisture
+              next.rawSoilMoisture || 2800
             );
             next.calculatedAqi = envRes.calculatedAqi;
             next.aqiCategory = envRes.aqiCategory;
@@ -178,9 +182,9 @@ export const App: React.FC = () => {
             // Soil Moisture Raw ADC
             next.rawSoilMoisture = packet.data.raw;
             const envRes = envProcessorRef.current.analyze(
-              next.temperatureC,
-              next.humidityPct,
-              next.rawMq135,
+              next.temperatureC || 27,
+              next.humidityPct || 50,
+              next.rawMq135 || 700,
               next.rawSoilMoisture
             );
             next.moisturePercent = envRes.moisturePercent;
@@ -206,28 +210,51 @@ export const App: React.FC = () => {
     [userProfile, sosModalOpen]
   );
 
-  // ── 4. Lifecycle & Wire-up ───────────────────────────────────────────────
+  // ── 4. Lifecycle & Serial Service Setup ───────────────────────────────────
   useEffect(() => {
-    // Wire Serial Service
     serialService.setOnPacket(handleIncomingPacket);
     serialService.setOnState((state, msg) => {
       setSerialState(state);
       setSerialMessage(msg || "");
+
       if (state === "CONNECTED") {
-        // If hardware is connected over USB, disable simulator to prioritize real hardware
-        simulatorService.stop();
-        setIsSimulatorOn(false);
+        setVitals((prev) => ({ ...prev, isConnected: true }));
+      } else if (state === "DISCONNECTED" || state === "ERROR") {
+        setVitals((prev) => ({
+          ...prev,
+          isConnected: false,
+          heartRate: null,
+          rrIntervalMs: null,
+          hrvRmssd: null,
+          hrvSdnn: null,
+          sqi: { label: "DISCONNECTED", score: 0 },
+          temperatureC: null,
+          humidityPct: null,
+          heatIndexC: null,
+          rawMq135: null,
+          calculatedAqi: null,
+          aqiCategory: null,
+          rawSoilMoisture: null,
+          moisturePercent: null,
+          motion: {
+            x: 0,
+            y: 0,
+            z: 0,
+            magnitude: 0,
+            activity: "IDLE",
+            fallDetected: false,
+            fallStage: "NONE",
+            fallConfidence: 0.0,
+          },
+        }));
+        setHealthScore(null);
+        setBaselineDriftPct(null);
+        setFatigueIndex(null);
+        setAlerts([]);
       }
     });
 
-    // Wire Simulator Service
-    simulatorService.setOnPacket(handleIncomingPacket);
-    if (isSimulatorOn) {
-      simulatorService.start();
-    }
-
     return () => {
-      simulatorService.stop();
       serialService.disconnect();
     };
   }, [handleIncomingPacket]);
@@ -239,27 +266,6 @@ export const App: React.FC = () => {
 
   const handleDisconnectUsb = async () => {
     await serialService.disconnect();
-  };
-
-  // Handle Simulator Toggle
-  const handleToggleSimulator = () => {
-    if (isSimulatorOn) {
-      simulatorService.stop();
-      setIsSimulatorOn(false);
-    } else {
-      simulatorService.start();
-      setIsSimulatorOn(true);
-    }
-  };
-
-  // Handle Scenario Change
-  const handleSelectScenario = (scenario: DisasterScenario) => {
-    setActiveScenario(scenario);
-    simulatorService.setScenario(scenario);
-    if (!isSimulatorOn) {
-      simulatorService.start();
-      setIsSimulatorOn(true);
-    }
   };
 
   // Handle Profile Switch
@@ -278,37 +284,51 @@ export const App: React.FC = () => {
     motionProcessorRef.current.resetFall();
   };
 
+  const isConnected = serialState === "CONNECTED";
+
   return (
     <div className="min-h-screen flex flex-col justify-between">
       {/* 1. Header Navbar */}
       <Navbar
         serialState={serialState}
         serialMessage={serialMessage}
-        isSimulatorOn={isSimulatorOn}
-        activeScenario={activeScenario}
         userProfile={userProfile}
         onConnectUsb={handleConnectUsb}
         onDisconnectUsb={handleDisconnectUsb}
-        onToggleSimulator={handleToggleSimulator}
-        onSelectScenario={handleSelectScenario}
         onSelectProfile={handleSelectProfile}
         onManualSos={handleManualSos}
       />
 
       {/* 2. Main Dashboard Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 flex-1 w-full">
-        {/* Banner: Connectivity / Edge Mode Indicator */}
+        {/* Prominent Hardware Connection Prompt (shown until USB is connected) */}
+        {!isConnected && (
+          <section>
+            <UsbConnectionPrompt
+              serialState={serialState}
+              serialMessage={serialMessage}
+              onConnect={handleConnectUsb}
+            />
+          </section>
+        )}
+
+        {/* Banner: Edge Mode Indicator */}
         <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 rounded-2xl bg-white/60 backdrop-blur-sm border border-purple-100 text-xs text-slate-600">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="flex items-center gap-1.5 font-bold text-brand-700">
               <Cpu className="w-4 h-4 text-brand-600" /> On-Device DSP Active:
             </span>
-            <span>Pan-Tompkins QRS, 50Hz Indian Mains Notch, Rothfusz Heat Index, 3-Phase Fall Machine</span>
+            <span>Pan-Tompkins QRS, 50Hz Mains Notch, Rothfusz Heat Index, 3-Phase Fall Machine</span>
           </div>
 
           <div className="flex items-center gap-4">
-            <span className="flex items-center gap-1 font-semibold text-emerald-700">
-              <ShieldCheck className="w-4 h-4 text-emerald-600" /> 100% Offline (Zero Cloud)
+            <span
+              className={`flex items-center gap-1 font-semibold ${
+                isConnected ? "text-emerald-700" : "text-amber-700"
+              }`}
+            >
+              <ShieldCheck className="w-4 h-4" />
+              {isConnected ? "Live USB Telemetry (115200 Baud)" : "Hardware Disconnected (Standby)"}
             </span>
             <span className="text-slate-400 font-mono">
               Packets Ingested: {vitals.packetsReceived}
@@ -325,17 +345,19 @@ export const App: React.FC = () => {
         <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
             <EcgWaveformCanvas
+              isConnected={isConnected}
               ringBuffer={ecgRingBuffer}
               heartRate={vitals.heartRate}
               rrIntervalMs={vitals.rrIntervalMs}
               hrvRmssd={vitals.hrvRmssd}
               hrvSdnn={vitals.hrvSdnn}
               sqi={vitals.sqi}
+              onConnectClick={handleConnectUsb}
             />
           </div>
 
           <div>
-            <MotionMonitor motion={vitals.motion} />
+            <MotionMonitor isConnected={isConnected} motion={vitals.motion} />
           </div>
         </section>
 
@@ -367,6 +389,7 @@ export const App: React.FC = () => {
 
           <div>
             <PersonalWellnessCard
+              isConnected={isConnected}
               healthScore={healthScore}
               baselineDriftPct={baselineDriftPct}
               fatigueIndex={fatigueIndex}

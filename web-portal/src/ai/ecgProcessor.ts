@@ -230,3 +230,4 @@ export class EcgProcessor {
     return this.ringBuffer;
   }
 }
+

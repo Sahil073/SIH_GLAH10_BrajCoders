@@ -8,15 +8,17 @@ import { Sparkles, TrendingUp, TrendingDown, BatteryCharging, Heart, Shield } fr
 import { UserProfile } from "../types/telemetry";
 
 interface PersonalWellnessCardProps {
-  healthScore: number;
-  baselineDriftPct: number;
-  fatigueIndex: number;
+  isConnected: boolean;
+  healthScore: number | null;
+  baselineDriftPct: number | null;
+  fatigueIndex: number | null;
   restingHrBaseline: number;
-  currentHr: number;
+  currentHr: number | null;
   userProfile: UserProfile;
 }
 
 export const PersonalWellnessCard: React.FC<PersonalWellnessCardProps> = ({
+  isConnected,
   healthScore,
   baselineDriftPct,
   fatigueIndex,
@@ -24,13 +26,6 @@ export const PersonalWellnessCard: React.FC<PersonalWellnessCardProps> = ({
   currentHr,
   userProfile,
 }) => {
-  // Score color gradient
-  const getScoreColor = () => {
-    if (healthScore >= 80) return "from-emerald-500 to-teal-400 text-emerald-600";
-    if (healthScore >= 60) return "from-amber-500 to-yellow-400 text-amber-600";
-    return "from-rosebud-500 to-red-500 text-rosebud-600";
-  };
-
   return (
     <div className="glass-card rounded-3xl p-6 transition-all shadow-soft flex flex-col justify-between">
       {/* Header */}
@@ -56,13 +51,15 @@ export const PersonalWellnessCard: React.FC<PersonalWellnessCardProps> = ({
           <div>
             <div className="text-xs font-semibold text-slate-500">Sanjeevni Health Score</div>
             <div className="text-3xl font-black tracking-tight text-brand-900 mt-0.5 flex items-baseline gap-1">
-              {healthScore}
+              {isConnected && healthScore !== null ? healthScore : "--"}
               <span className="text-xs font-semibold text-slate-400">/ 100</span>
             </div>
             <div className="text-[11px] font-medium text-slate-600 mt-1">
-              {healthScore >= 80
+              {!isConnected
+                ? "Connect USB to begin live baseline scoring"
+                : healthScore !== null && healthScore >= 80
                 ? "✨ Vitals & disaster resilience optimal"
-                : healthScore >= 60
+                : healthScore !== null && healthScore >= 60
                 ? "⚠️ Mild physiological stress / heat burden"
                 : "🚨 High environmental distress or cardiac strain"}
             </div>
@@ -86,10 +83,20 @@ export const PersonalWellnessCard: React.FC<PersonalWellnessCardProps> = ({
                 stroke="currentColor"
                 strokeWidth="5"
                 strokeDasharray={175.9}
-                strokeDashoffset={175.9 - (175.9 * healthScore) / 100}
+                strokeDashoffset={
+                  isConnected && healthScore !== null
+                    ? 175.9 - (175.9 * healthScore) / 100
+                    : 175.9
+                }
                 strokeLinecap="round"
                 className={`transition-all duration-700 ${
-                  healthScore >= 80 ? "text-emerald-500" : healthScore >= 60 ? "text-amber-500" : "text-rosebud-500"
+                  !isConnected || healthScore === null
+                    ? "text-slate-300"
+                    : healthScore >= 80
+                    ? "text-emerald-500"
+                    : healthScore >= 60
+                    ? "text-amber-500"
+                    : "text-rosebud-500"
                 }`}
                 fill="transparent"
               />
@@ -107,15 +114,21 @@ export const PersonalWellnessCard: React.FC<PersonalWellnessCardProps> = ({
               Resting HR Drift
             </div>
             <div className="text-lg font-bold text-slate-800 mt-1 flex items-center gap-1">
-              {baselineDriftPct > 0 ? `+${baselineDriftPct}%` : `${baselineDriftPct}%`}
-              {baselineDriftPct > 15 ? (
-                <TrendingUp className="w-4 h-4 text-red-500" />
+              {!isConnected || baselineDriftPct === null ? (
+                "--"
               ) : (
-                <TrendingDown className="w-4 h-4 text-emerald-500" />
+                <>
+                  {baselineDriftPct > 0 ? `+${baselineDriftPct}%` : `${baselineDriftPct}%`}
+                  {baselineDriftPct > 15 ? (
+                    <TrendingUp className="w-4 h-4 text-red-500" />
+                  ) : (
+                    <TrendingDown className="w-4 h-4 text-emerald-500" />
+                  )}
+                </>
               )}
             </div>
             <div className="text-[10px] text-slate-400 mt-0.5">
-              Base: {restingHrBaseline} → Now: {currentHr} BPM
+              Base: {restingHrBaseline} → Now: {isConnected && currentHr !== null ? `${currentHr} BPM` : "--"}
             </div>
           </div>
 
@@ -126,7 +139,7 @@ export const PersonalWellnessCard: React.FC<PersonalWellnessCardProps> = ({
               Fatigue / Stress
             </div>
             <div className="text-lg font-bold text-slate-800 mt-1">
-              {fatigueIndex}%
+              {isConnected && fatigueIndex !== null ? `${fatigueIndex}%` : "--"}
             </div>
             <div className="text-[10px] text-slate-400 mt-0.5">
               Derived from HRV RMSSD

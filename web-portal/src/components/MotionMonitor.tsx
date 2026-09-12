@@ -4,10 +4,11 @@
 // =============================================================================
 
 import React from "react";
-import { Activity, ShieldAlert, Move, AlertOctagon, Check } from "lucide-react";
+import { Activity, ShieldAlert, Move, AlertOctagon, Check, Usb } from "lucide-react";
 import { ActivityState, FallStage } from "../types/telemetry";
 
 interface MotionMonitorProps {
+  isConnected: boolean;
   motion: {
     x: number;
     y: number;
@@ -20,11 +21,14 @@ interface MotionMonitorProps {
   };
 }
 
-export const MotionMonitor: React.FC<MotionMonitorProps> = ({ motion }) => {
+export const MotionMonitor: React.FC<MotionMonitorProps> = ({ isConnected, motion }) => {
   const { x, y, z, magnitude, activity, fallDetected, fallStage } = motion;
 
   // Activity pill styling
   const getActivityBadge = () => {
+    if (!isConnected) {
+      return { text: "USB Disconnected", color: "bg-slate-100 text-slate-600 border-slate-200" };
+    }
     switch (activity) {
       case "REST":
         return { text: "Resting / Sedentary", color: "bg-purple-100 text-brand-800 border-purple-200" };
@@ -34,6 +38,8 @@ export const MotionMonitor: React.FC<MotionMonitorProps> = ({ motion }) => {
         return { text: "Active Walking", color: "bg-emerald-100 text-emerald-800 border-emerald-200" };
       case "VIGOROUS":
         return { text: "Vigorous Exertion", color: "bg-rosebud-100 text-rosebud-800 border-rosebud-200" };
+      default:
+        return { text: "Standby", color: "bg-slate-100 text-slate-600 border-slate-200" };
     }
   };
 
@@ -41,6 +47,7 @@ export const MotionMonitor: React.FC<MotionMonitorProps> = ({ motion }) => {
 
   // Normalize bar percentage (-15 m/s^2 to +15 m/s^2 mapped to 0-100%)
   const normalizeBar = (val: number) => {
+    if (!isConnected) return 50;
     const clamped = Math.max(-16, Math.min(16, val));
     return ((clamped + 16) / 32) * 100;
   };
@@ -70,7 +77,7 @@ export const MotionMonitor: React.FC<MotionMonitorProps> = ({ motion }) => {
           <div>
             <div className="text-xs font-medium text-slate-500">Acceleration Magnitude</div>
             <div className="text-2xl font-extrabold text-brand-900 tracking-tight flex items-baseline gap-1">
-              {magnitude.toFixed(2)}
+              {isConnected ? magnitude.toFixed(2) : "--"}
               <span className="text-xs font-semibold text-brand-600">m/s²</span>
             </div>
           </div>
@@ -78,7 +85,8 @@ export const MotionMonitor: React.FC<MotionMonitorProps> = ({ motion }) => {
           <div className="text-right">
             <div className="text-xs font-medium text-slate-500">Earth Gravity Norm</div>
             <div className="text-sm font-bold text-slate-700">
-              {(magnitude / 9.806).toFixed(2)} <span className="text-xs font-normal">g</span>
+              {isConnected ? (magnitude / 9.806).toFixed(2) : "--"}{" "}
+              <span className="text-xs font-normal">g</span>
             </div>
           </div>
         </div>
@@ -89,7 +97,7 @@ export const MotionMonitor: React.FC<MotionMonitorProps> = ({ motion }) => {
           <div>
             <div className="flex justify-between text-xs font-medium text-slate-600 mb-1">
               <span className="font-bold text-brand-700">X-Axis (Lateral):</span>
-              <span className="font-mono">{x.toFixed(2)} m/s²</span>
+              <span className="font-mono">{isConnected ? `${x.toFixed(2)} m/s²` : "--"}</span>
             </div>
             <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
               <div
@@ -103,7 +111,7 @@ export const MotionMonitor: React.FC<MotionMonitorProps> = ({ motion }) => {
           <div>
             <div className="flex justify-between text-xs font-medium text-slate-600 mb-1">
               <span className="font-bold text-rosebud-600">Y-Axis (Vertical):</span>
-              <span className="font-mono">{y.toFixed(2)} m/s²</span>
+              <span className="font-mono">{isConnected ? `${y.toFixed(2)} m/s²` : "--"}</span>
             </div>
             <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
               <div
@@ -117,7 +125,7 @@ export const MotionMonitor: React.FC<MotionMonitorProps> = ({ motion }) => {
           <div>
             <div className="flex justify-between text-xs font-medium text-slate-600 mb-1">
               <span className="font-bold text-purple-600">Z-Axis (Dorsal/Chest):</span>
-              <span className="font-mono">{z.toFixed(2)} m/s²</span>
+              <span className="font-mono">{isConnected ? `${z.toFixed(2)} m/s²` : "--"}</span>
             </div>
             <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
               <div
@@ -136,7 +144,11 @@ export const MotionMonitor: React.FC<MotionMonitorProps> = ({ motion }) => {
             <ShieldAlert className="w-4 h-4 text-brand-600" /> Fall Guard System:
           </span>
 
-          {fallDetected || fallStage === "CONFIRMED" ? (
+          {!isConnected ? (
+            <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-500 border border-slate-200">
+              USB Disconnected
+            </span>
+          ) : fallDetected || fallStage === "CONFIRMED" ? (
             <span className="px-2.5 py-1 rounded-full text-xs font-extrabold bg-red-100 text-red-700 border border-red-200 flex items-center gap-1 animate-pulse">
               <AlertOctagon className="w-3.5 h-3.5" /> IMPACT CONFIRMED
             </span>
@@ -157,7 +169,9 @@ export const MotionMonitor: React.FC<MotionMonitorProps> = ({ motion }) => {
 
         {/* Motion Artifact Gating Explanation */}
         <p className="text-[11px] text-slate-500 mt-2">
-          {activity === "VIGOROUS" || activity === "ACTIVE"
+          {!isConnected
+            ? "Connect USB cable to stream real-time motion vectors from ADXL345."
+            : activity === "VIGOROUS" || activity === "ACTIVE"
             ? "⚠️ High motion active — false-alarm gate suppresses non-critical cardiac warnings."
             : "✓ Stable resting baseline — full biopotential sensitivity enabled."}
         </p>

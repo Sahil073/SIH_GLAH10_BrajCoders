@@ -132,3 +132,4 @@ export class MotionProcessor {
     this.postImpactSamples = [];
   }
 }
+

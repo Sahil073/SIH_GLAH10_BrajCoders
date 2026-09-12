@@ -3,10 +3,10 @@
 // Shared Telemetry and Disaster Resilience Types for Sanjeevni Web Portal
 // =============================================================================
 
-export type ActivityState = "REST" | "LIGHT" | "ACTIVE" | "VIGOROUS";
+export type ActivityState = "REST" | "LIGHT" | "ACTIVE" | "VIGOROUS" | "IDLE";
 export type RiskLevel = "NORMAL" | "CAUTION" | "HIGH" | "CRITICAL";
 export type FallStage = "NONE" | "FREEFALL" | "IMPACT" | "CONFIRMED";
-export type SQILabel = "EXCELLENT" | "GOOD" | "USABLE" | "NOISY" | "INVALID";
+export type SQILabel = "EXCELLENT" | "GOOD" | "USABLE" | "NOISY" | "INVALID" | "DISCONNECTED";
 
 export interface RawExgPacket {
   v: number;
@@ -67,35 +67,36 @@ export type RawSensorPacket =
   | RawMq135Packet
   | RawSoilPacket;
 
-// Processed Live Vitals State
+// Processed Live Vitals State (Strictly Real Data — Nullable when USB disconnected)
 export interface LiveVitals {
-  heartRate: number;              // BPM (from Pan-Tompkins QRS)
-  rrIntervalMs: number;          // Beat-to-beat RR interval in ms
-  hrvRmssd: number;              // RMSSD in ms
-  hrvSdnn: number;               // SDNN in ms
+  isConnected: boolean;
+  heartRate: number | null;              // BPM (from Pan-Tompkins QRS)
+  rrIntervalMs: number | null;          // Beat-to-beat RR interval in ms
+  hrvRmssd: number | null;              // RMSSD in ms
+  hrvSdnn: number | null;               // SDNN in ms
   sqi: {
     label: SQILabel;
-    score: number;               // 0.0 - 1.0
+    score: number;                      // 0.0 - 1.0
   };
-  temperatureC: number;          // DHT11 ambient temp in °C
-  humidityPct: number;           // DHT11 relative humidity in %
-  heatIndexC: number;            // Rothfusz Heat Index in °C
-  rawMq135: number;              // Raw gas sensor ADC
-  calculatedAqi: number;         // Calibrated CPCB AQI value
-  aqiCategory: "Good" | "Moderate" | "Poor" | "Very Poor" | "Severe";
-  rawSoilMoisture: number;       // Raw soil/moisture ADC
-  moisturePercent: number;       // Estimated moisture %
+  temperatureC: number | null;          // DHT11 ambient temp in °C
+  humidityPct: number | null;           // DHT11 relative humidity in %
+  heatIndexC: number | null;            // Rothfusz Heat Index in °C
+  rawMq135: number | null;              // Raw gas sensor ADC
+  calculatedAqi: number | null;         // Calibrated CPCB AQI value
+  aqiCategory: "Good" | "Moderate" | "Poor" | "Very Poor" | "Severe" | null;
+  rawSoilMoisture: number | null;       // Raw soil/moisture ADC
+  moisturePercent: number | null;       // Estimated moisture %
   motion: {
     x: number;
     y: number;
     z: number;
-    magnitude: number;           // Total vector magnitude in m/s^2
+    magnitude: number;                  // Total vector magnitude in m/s^2
     activity: ActivityState;
     fallDetected: boolean;
     fallStage: FallStage;
     fallConfidence: number;
   };
-  lastPacketTs: number;
+  lastPacketTs: number | null;
   packetsReceived: number;
 }
 
